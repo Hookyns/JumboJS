@@ -1,8 +1,7 @@
-# Jumbo (jumbo-core)
+# JumboJS
+Modern fast enterprise level MVC framework for Node.js
 
-Jumbo is powerfull Node.js MVC framework...
+!! Under development !! Sources on my bitbucket - will be moved here soon
 
-# TODO
-- Maybe create interface allowing usage of own template engines
-- Allow configuration of maximal download speed of static files
-- Allow listening for blocked IPs
+## DOCS
+Watch docs [here](https://hookyns.github.io/JumboJS-docs/)
