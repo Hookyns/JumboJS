@@ -1,0 +1,1 @@
+#001 base/Controller.class - this.callback - Default callback (which contain return with this code) was returned. Some error occurs in application/Aplication.class while processing request - no callback was set to controller

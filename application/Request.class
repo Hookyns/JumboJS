@@ -1,0 +1,333 @@
+/**
+ * This file is part of Jumbo framework for Node.js
+ * Written by Roman Jámbor
+ */
+
+"use strict";
+
+const $crypt = require("../utils/crypt");
+var Log = Jumbo.Logging.Log;
+
+/**
+ * Class encapsulating basic http.Request and http.Response
+ * @memberOf Jumbo.Application
+ */
+class Request {
+	//<editor-fold desc="Virtual Callbacks">
+
+	/**
+	 * @callback buildRequestCallback
+	 * @param {Error} error
+	 * @param {Jumbo.Application.Request} request
+	 */
+
+	//</editor-fold>
+
+	//<editor-fold desc="Ctor">
+
+	/**
+	 * @param request
+	 * @param response
+	 * @param locator
+	 * @constructs
+	 */
+	constructor(request, response, locator) {
+		/**
+		 * Original request from http server
+		 * @type IncomingMessage
+		 */
+		this.request = request;
+
+
+		/**
+		 * Original response from http server
+		 * @type ServerResponse
+		 */
+		this.response = response;
+
+
+		/**
+		 * Locator instance
+		 * @type {Jumbo.Application.Locator}
+		 */
+		this.locator = locator;
+
+
+		/**
+		 * Subapp on which request points
+		 * @type {String}
+		 */
+		this.subApp = null;
+
+
+		/**
+		 * Controller on which request points
+		 * @type {String}
+		 */
+		this.controller = null;
+
+
+		/**
+		 * Action on which request points
+		 * @type {String}
+		 */
+		this.action = null;
+
+
+		/**
+		 * Request params
+		 * @type {Array}
+		 */
+		this.params = null;
+
+		/**
+		 * POST data
+		 * @type {{fields: {}, files: {}} | null}
+		 */
+		this.body = null;
+
+
+		/**
+		 * Response header
+		 * @type {[]}
+		 */
+		this.header = {"Content-Type": "text/html"};
+
+
+		/**
+		 * Zaznamenává požadavek na načtení stránky bez cache - ctrl + F5
+		 * Is true if page was load with ctrl + F5; it means if request doesn't want cached result
+		 * @type {boolean}
+		 */
+		this.noCache = request.headers['pragma'] === "no-cache";
+
+
+		/**
+		 * User's session ID
+		 * @type {null}
+		 */
+		this.sessionId = null;
+
+
+		/**
+		 * Time when was request made
+		 * @type {null}
+		 */
+		this.beginTime = null;
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Public Methods">
+
+	/**
+	 * Set specific cookie
+	 * @param {string} name Cokie name
+	 * @param {string} value Cookie value
+	 * @param {Number} [expire] Expiration in seconds
+	 * @param {String} [domain] Domain
+	 * @param {String} [path] Path
+	 */
+	setCookie(name, value, expire, domain, path) {
+		var cookies = this.header['Set-Cookie'] || [];
+		var newCookie = name + "=" + value + ";";
+
+		if (expire) {
+			var expdate = new Date();
+			expdate.setTime(expdate.getTime() + expire * 1000);
+			newCookie += "expires=" + expdate.toUTCString() + ";";
+		}
+
+		if (domain) {
+			newCookie += "domain=" + domain + ";";
+		}
+
+		if (path) {
+			newCookie += "$path=" + path + ";";
+		}
+
+		cookies.push(newCookie);
+		this.header['Set-Cookie'] = cookies;
+	}
+
+	/**
+	 * Return named object with all cookies
+	 * @returns {{}}
+	 */
+	getCookies() {
+		var cookies = {};
+
+		if (this.request.headers.cookie) {
+			this.request.headers.cookie.split(";").forEach(function (param) {
+				cookies[param.substr(0, param.indexOf("=")).trim()] = param.substr(param.indexOf("=") + 1);
+			});
+		}
+
+		return cookies;
+	}
+
+	/**
+	 * Return value of given cookie
+	 * @param {string} name
+	 * @returns {string|null}
+	 */
+	getCookie(name) {
+		return this.getCookies()[name] || null;
+	}
+
+	/**
+	 * Delete cookie with given name
+	 * @param name
+	 */
+	unsetCookie(name) {
+		var cookies = this.header['Set-Cookie'] || [];
+		cookies.push(name + "=deleted; $path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT");
+		this.header['Set-Cookie'] = cookies;
+	}
+
+	/**
+	 * Return client's IP
+	 * @returns {String}
+	 */
+	getIP() {
+		return Application.getClientIP(this.request);
+	}
+
+	/**
+	 * Redirect to given controller and action
+	 * @param {String} controllerName Controller name
+	 * @param {String} actionName Action name
+	 * @param {Array} [slashParams]
+	 * @param {Object} [queryParams]
+	 * @param {String} [protocol] http | https
+	 */
+	redirect(controllerName, actionName, slashParams, queryParams, protocol) {
+		this.header["Location"] = this.locator.generateUrl(controllerName, actionName, slashParams, queryParams, null, protocol);
+		this.response.writeHead(302, this.header);
+		this.response.end();
+	}
+
+	/**
+	 * Redirect to given controller and action in given sub application
+	 * @param {String} subAppName Sub applicaton name
+	 * @param {String} controllerName Controller name
+	 * @param {String} actionName Action name
+	 * @param {Array} [slashParams]
+	 * @param {Object} [queryParams]
+	 * @param {String} [protocol] http | https
+	 */
+	subAppRedirect(subAppName, controllerName, actionName, slashParams, queryParams, protocol) {
+		this.header["Location"] = this.locator.generateUrl(controllerName, actionName, slashParams, queryParams, subAppName, protocol);
+		this.response.writeHead(302, this.header);
+		this.response.end();
+	}
+
+	/**
+	 * Redirect to URL defined by Location
+	 * @param {String} locationName
+	 * @param {String} [controllerName]
+	 * @param {String} [actionName]
+	 * @param {Object} [params]
+	 */
+	locationRedirect(locationName, controllerName, actionName, params) {
+		this.header["Location"] = this.locator.generateLocationUrl(locationName, controllerName, actionName, params);
+		this.response.writeHead(302, this.header);
+		this.response.end();
+	}
+
+	/**
+	 * Redirect to given URL
+	 * @param {String} url
+	 */
+	redirectURL(url) {
+		this.header["Location"] = url;
+		this.response.writeHead(302, this.header);
+		this.response.end();
+	}
+
+	/**
+	 * Reload client's page
+	 */
+	reload() {
+		this.redirectURL(this.request.url);
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Private Methods">
+
+	/**
+	 * Static method which create and verify Request
+	 * @private
+	 * @param {http.IncomingMessage} request
+	 * @param {http.ServerResponse} response
+	 * @param {Jumbo.Application.Locator} locator
+	 * @param {buildRequestCallback} callback
+	 */
+	static buildRequest(request, response, locator, requestBeginTime, callback) {
+		var match;
+
+		var controllerFactory = Application.controllerFactory;
+
+		if ((match = locator.parseUrl(request)) !== null) {
+			var existsError;
+
+			// Check existance of requested controller and action in given subapp
+			if ((existsError = controllerFactory.controllerAndActionExist(match.controller,
+						match.action, match.subApp)) instanceof Error)
+			{
+				callback(new Jumbo.Exceptions.ControllerOrActionDoesntExistsException(existsError.message), null);
+				return;
+			}
+
+			var req = new Request(request, response, locator);
+			var action, controller;
+
+			// Get controller and action names
+			if (!!match.subApp) {
+				action = controllerFactory.getSubAppActionName(match.subApp, match.controller, match.action);
+				controller = Application.controllerFactory.getSubAppControllerName(match.subApp, match.controller);
+			} else {
+				action = controllerFactory.getActionName(match.controller, match.action);
+				controller = controllerFactory.getControllerName(match.controller);
+			}
+
+			// Bind framework location to request
+			req.bindLocation(match.subApp, controller, action, match.params);
+
+			// Write request begin time
+			req.beginTime = requestBeginTime;
+
+			// Give unique ID to client
+			if (!(req.sessionId = req.getCookie(Jumbo.Config.session.sessionsCookieName))) {
+				req.sessionId = $crypt.uid();
+
+				req.setCookie(Jumbo.Config.session.sessionsCookieName, req.sessionId, null, null, "/");
+			}
+
+			callback(null, req);
+			return;
+		}
+
+		callback(new Jumbo.Exceptions.UrlIsNotValidException(), null);
+	}
+
+	/**
+	 * Bind target to this Request
+	 * @private
+	 * @param subApps
+	 * @param controller
+	 * @param action
+	 * @param params
+	 */
+	bindLocation(subApps, controller, action, params) {
+		this.subApp = !!subApps ? subApps : null;
+		this.controller = controller.slice(0, -10); // Remove Controller from name
+		this.action = action.charAt(6).toLowerCase() + action.slice(7); // Remove action from name and make first letter lower case
+		this.params = params;
+	}
+
+	//</editor-fold>
+}
+
+module.exports = Request;

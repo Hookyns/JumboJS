@@ -1,0 +1,24 @@
+{
+	"name": "jumbo-core",
+	"version": "0.2.0",
+	"description": "JumboJS is fast MVC framework for fast and easy web developing with additional developing tools in jumbo-developer package.",
+	"author": {
+		"name": "Roman Jámbor",
+		"email": "swat.hawkyns@seznam.cz"
+	},
+	"main": "loader.js",
+	"dependencies": {
+		"formidable": "1.0.17"
+	},
+	"engines": {
+		"node": ">=6.9.2"
+	},
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://HookCZ@bitbucket.org/HookCZ/jumbo-core.git"
+	},
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	}
+}

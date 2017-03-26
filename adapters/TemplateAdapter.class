@@ -1,0 +1,18 @@
+/**
+ * Integrated template adapter for Jumplate
+ */
+class TemplateAdapter {
+	async compile(templatePath, layoutPath) {
+
+	}
+
+	async render(templatePath, layoutPath, data) {
+
+	}
+
+	async renderCahed(compiledTemplate, data) {
+
+	}
+}
+
+module.exports = TemplateAdapter;

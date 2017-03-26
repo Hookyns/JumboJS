@@ -1,0 +1,644 @@
+/**
+ * This file is part of Jumbo framework for Node.js
+ * Written by Roman Jámbor
+ */
+
+
+var Log = Jumbo.Logging.Log;
+
+
+const $qs = require("querystring");
+const $url = require("url");
+const $object = require("../utils/object");
+
+var instance = null;
+
+/**
+ * Class Locator for work with URLs and routing
+ * @class Locator
+ * @memberOf Jumbo.Application
+ */
+class Locator {
+
+	//<editor-fold desc="Static Properties">
+
+	/**
+	 *
+	 * @returns {{Integer: RegExp, StringId: RegExp, Number: RegExp}}
+	 * @constructor
+	 */
+	static get ParamTypes() {
+		return {
+			Integer: /[0-9]+/,
+			StringId: /[a-zA-Z_]/,
+			Number: /[0-9]*(?:\.[0-9]+)?/
+		};
+	}
+
+	/**
+	 * Get Locator instance
+	 * @returns {Jumbo.Application.Locator}
+	 */
+	static get instance() {
+		if (instance == null) {
+			instance = Reflect.construct(Locator, [], LocatorActivator);
+		}
+
+		return instance;
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Ctor">
+
+	/**
+	 * @constructs
+	 */
+	constructor() {
+		if (new.target != LocatorActivator) {
+			throw new Error("You cannot call private constructor!");
+		}
+
+		/**
+		 * Array of supported addresses
+		 * @type {Array}
+		 * @private
+		 */
+		this.locations = {}; // [] // TODO: přeimplementovat na mapu => je třba udržet pořadí lokací
+
+		/**
+		 * Default main subdomain
+		 * @type {String}
+		 * @private
+		 */
+		this.main = "www";
+
+		/**
+		 * Registered subdomains
+		 * @type {Array}
+		 * @private
+		 */
+		this.subDomains = [];
+
+		/**
+		 * Server hostname
+		 * @type {String|null}
+		 * @private
+		 */
+		this.host = null;
+
+		/**
+		 * Delimiter for URL parts spliting controller, action etc.
+		 * @private
+		 * @type {string}
+		 */
+		this.delimiter = "/";
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Public Methods">
+
+	/**
+	 * Set server hostname - used for detection of sub-apps and link creation
+	 * @param {String} host
+	 */
+	setHost(host) {
+		this.host = host;
+	}
+
+	/**
+	 * Set URL part delimiter spliting controller, action etc.
+	 * Eg. delimiter ~ => domain.tld/controller~action~id
+	 * @param delimiter
+	 */
+	setDelimiter(delimiter) {
+		this.delimiter = delimiter;
+	}
+
+	/**
+	 * Set default subdomain which will route to base app; both urls with and without main subdomain will work
+	 * It's good for cases when you host application on some subdomain eg. myapp.domain.tld. Main subdomain is set to "www"
+	 * @param {String} subName
+	 */
+	setMainSubdomain(subName) {
+		this.main = subName.toLowerCase();
+	}
+
+	/**
+	 * Register sub-app to Locator as subdomain
+	 * @param {String} subName Název subdomény
+	 */
+	addSubdomain(subName) {
+		this.subDomains.push(subName.toLowerCase());
+	}
+
+	/**
+	 * Add new location to Locator
+	 * @param {String} locationName
+	 * @param {String} location
+	 * @param {Object|null} [options]
+	 * @param {String} subApp
+	 */
+	addLocation(locationName, location, options = null, subApp = null) {
+		if (typeof location != "string") {
+			throw new Error("Locaton must be string.");
+		}
+
+		if (options !== null && options.constructor != Object) {
+			throw new Error("Options parameter must be Object.");
+		}
+
+		if (this.locations[locationName]) {
+			throw new Error("Location with this name already exists.");
+		}
+
+		options = options || {};
+
+		var loc = {
+			location: location,
+			locationMatcher: null,
+			controller: null,
+			action: null,
+			params: options.params || {},
+			targetedController: false, // It's location which not specify controller nor action, both are defined in options
+			targetedAction: false,
+			options: options,
+			subApp: subApp,
+			variables: [] // Names of variables in order as defined in location
+			// controllerIndex: -1,
+			// actionIdex: -1 // Indexes are used for replace when creating URL;
+			// // Indexes are found here while start than later in each request mb many times - little performance improvement
+		};
+
+		if (options.controller) {
+			loc.controller = options.controller;
+			loc.targetedController = true;
+		} else {
+			// If no controller is defined than location must contain $controler variable
+			if (!location.match(/\$controller/)) {
+				throw new Error("No controller specified in this location.");
+			}
+		}
+
+		if (options.action) {
+			loc.action = options.action;
+			loc.targetedAction = true;
+		} else {
+			// If no action is defined than location must contain $action variable
+			if (!location.match(/\$action/)) {
+				throw new Error("No action specified in this location.");
+			}
+		}
+
+		// Create regex for this location
+		// proc optional part
+		location = location.replace(/\[/g, "(?:");
+		location = location.replace(/]/g, ")?");
+
+		// Replace location delmiter ith registered delimiter
+		if (this.delimiter != "/") {
+			var delimiter = this.delimiter;
+
+			if (["\\", ".", "*", "?", "+", "|", "(", ")", "[", "]", "{", "}"].indexOf(delimiter) != 1) {
+				delimiter = "\\" + delimiter;
+			}
+
+			location = location.replace(/\//g, this.delimiter);
+		}
+
+		// proc variables
+		loc.locationMatcher = "^" + location.replace(/\$([a-z][a-zA-Z]*)/g, (_, varName) => {
+			loc.variables.push(varName);
+
+			if (varName == "controller") {
+				return "([a-zA-Z]{3,})";
+			}
+
+			if (varName == "action") {
+				return "([a-zA-Z]{2,})";
+			}
+
+			varName = "$" + varName;
+
+			if (options[varName]) {
+				return "(" + options[varName].toString().slice(1, -1) + ")";
+			}
+
+			return "([a-zA-Z0-9-_]+)";
+		}) + "$";
+
+		this.locations[locationName] = loc;
+	}
+
+	/**
+	 * Generate full URL with protocol and host. Host must be set by setHost().
+	 * @param {String} controller
+	 * @param {String} action
+	 * @param {Array} [lashParams]
+	 * @param {Object} [queryParams]
+	 * @param {String} [subApp]
+	 * @param {String} [protocol]
+	 * @param {String} [host]
+	 * @returns {string}
+	 */
+	generateUrl(controller, action, slashParams = [], queryParams = {}, subApp = null, protocol = null, host = null) {
+		if (!Application.controllerFactory.controllerAndActionExist(controller, action, subApp)) {
+			throw new Error("Controller or it's action doesn't exists.");
+		}
+
+		var baseUrl = "/";
+
+		if (host || protocol) {
+			baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host);
+		}
+
+		var queryParamsLength = Object.keys(queryParams).length;
+		var noParams = slashParams.length == 0 && queryParamsLength == 0;
+
+		// Base controller and action - return base URL
+		if (controller == Jumbo.Application.Application.defaultController
+			&& action == Jumbo.Application.Application.defaultAction && noParams
+		) {
+			return baseUrl;
+		}
+
+		// Default action - return base URL just with controller
+		else if (action == Jumbo.Application.Application.defaultAction && noParams
+		) {
+			return baseUrl + "/" + controller.toLowerCase();
+		}
+		else {
+			var url = baseUrl + "/" + controller.toLowerCase() + this.delimiter + action.toLowerCase();
+
+			if (!noParams) {
+				if (slashParams.length == 0) url += this.delimiter;
+
+				for (var i = 0; i < slashParams.length; i++) {
+					url += this.delimiter + slashParams[i];
+				}
+
+				if (queryParamsLength != 0) {
+					var x = false;
+
+					for (var p in queryParams) {
+						if (queryParams.hasOwnProperty(p)) {
+							if (x) {
+								url += "&";
+							} else {
+								url += "?";
+								x = true;
+							}
+
+							url += p + "=" + encodeURIComponent(queryParams[p]);
+						}
+					}
+				}
+			}
+
+			return url;
+		}
+	}
+
+	/**
+	 * Create URL from specified Location
+	 * @param {String} locationName
+	 * @param {String} [controller]
+	 * @param {String} [action]
+	 * @param {Object} [params]
+	 * @returns {String}
+	 */
+	generateLocationUrl(locationName, controller = null, action = null, params = {}) {
+		if (!this.locations[locationName]) {
+			throw new Error("Location with this name doesn't exists.");
+		}
+
+		if (params.constructor != Object) {
+			throw new Error("Parameter params must be Object");
+		}
+
+		var location = this.locations[locationName];
+
+		if (location.options.controller) {
+			controller = location.options.controller;
+		}
+
+		if (location.options.action) {
+			action = location.options.action;
+		}
+
+		// Remove optional parameters -> remove brackets
+		var loc = location.location.replace(/\[|\]/g, "");
+
+		return "/" + loc.replace(/(\/)?\$([a-z][a-zA-Z]*)/g, (_, delimiter, varName) => {
+			if (varName == "controller") {
+				if (!controller) {
+					throw new Error("This location require controller but you don't pass any in parameters.");
+				}
+
+				return controller.toLowerCase();
+			}
+
+			if (varName == "action") {
+				if (!action) {
+					throw new Error("This location require action but you don't pass any in parameters.");
+				}
+				return this.delimiter + action.toLowerCase();
+			}
+
+			if (location.options[varName]) {
+				return this.delimiter + location.options[varName];
+			}
+
+			return "";
+		});
+	}
+
+	//noinspection JSMethodCanBeStatic
+	/**
+	 * Extract subapp from request
+	 * @param {http.IncomingMessage} request
+	 * @returns {Array}
+	 */
+	extractSubApp(request) {
+		var host = request.headers.host.replace(/:[0-9]+$/, ""); //request.url.replace(/http(s)?:\/\//, "");
+
+		// Test if host is IP - no subapp
+		if (host.match(/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/)) {
+			return null;
+		}
+
+		// Count domains - if less than 3, no subdomain used
+		var s = host.split(".");
+		if (s.length < 3) {
+			return null;
+		}
+
+		return s[0];
+	}
+
+	/**
+	 * Parse URL address to parts (controller, acton, subapp)
+	 * @param {http.IncomingMessage} request
+	 * @returns {Object | null}
+	 */
+	parseUrl(request) {
+		//noinspection JSUnresolvedVariable
+		var url = request.url;
+
+		// Find subapp
+		var subApp = this.extractSubApp(request);
+
+		if (subApp !== null) {
+			subApp = subApp.toLowerCase();
+		}
+
+		if (subApp == this.main) {
+			subApp = null;
+		}
+
+		if (subApp !== null) {
+			var found = false;
+			var d = 0;
+			var dl = this.subDomains.length;
+
+			while (!found && d < dl) {
+				if (this.subDomains[d] == subApp) found = true;
+				d++;
+			}
+
+			if (!found) {
+				return null;
+			}
+		}
+
+		// Parse URL to parts
+		var parse = $url.parse(url);
+
+		// If just slash
+		if (parse.pathname == "/") {
+			return {
+				subApp: subApp,
+				controller: Jumbo.Application.Application.defaultController,
+				action: Jumbo.Application.Application.defaultAction,
+				params: $qs.parse(parse.query)
+			};
+		}
+
+		// Path
+		url = parse.pathname.slice(1); // Slice remove first slash
+
+		console.log("url", url);
+
+		var matched = false;
+		var match;
+		var locNames = Object.keys(this.locations);
+		var c = locNames.length;
+		var locIndex;
+		var location;
+
+		// Procedure which try if some registered location match
+		var tryToMatchProc = (url) => {
+
+			// Try to match
+			for (var i = 0; !matched && i < c; i++) {
+				location = this.locations[locNames[i]];
+
+				match = url.match(location.locationMatcher);
+
+				if (match !== null && (
+						// If no subapp in request and matched location is for main subapp
+						(subApp === null && location.subApp == this.main)
+
+						// OR subapp in request match subapp in location
+						|| subApp == location.subApp
+
+						// OR no subapp in matched location speficied (location for all subapps)
+						|| location.subApp === null
+					)
+				) {
+					locIndex = locNames[i];
+					matched = true;
+				}
+			}
+		};
+
+		// Try to match current url path
+		tryToMatchProc(url);
+
+		// If not matched before, try to match with added action
+		if (!matched && url.match(/^\/[a-z]+$/)) {// If only /controller
+			var tmpUrl = url + this.delimiter + Jumbo.Application.Application.defaultAction;
+			tryToMatchProc(tmpUrl);
+		}
+
+		if (matched) {
+			var location = this.locations[locIndex];
+
+			var res = {
+				subApp: subApp,
+				controller: location.targetedController
+					? location.controller
+					: match[location.variables.indexOf("controller") + 1],
+				action: location.targetedAction
+					? location.action
+					: (match[location.variables.indexOf("action") + 1]
+				|| Jumbo.Application.Application.defaultAction),
+				params: $object.clone(location.params),
+				location: location
+			};
+
+			c = location.variables.length;
+
+			// Slash params
+			for (var i = 0; i < c; i++) {
+				if (location.variables[i] != "controller" && location.variables[i] != "action") {
+					res.params[location.variables[i]] = match[i + 1];
+				}
+			}
+
+			// Query params
+			var queryParams = $qs.parse(parse.query);
+
+			for (var qp in queryParams) {
+				if (queryParams.hasOwnProperty(qp)) {
+					res.params[qp] = queryParams[qp];
+				}
+			}
+
+			return res;
+		}
+
+		return null;
+
+
+		// //noinspection JSUnresolvedVariable
+		// var url = request.url;
+		//
+		// // Find subapp
+		// var subApp = this.extractSubApp(request);
+		//
+		// if (subApp !== null) {
+		// 	subApp = subApp.toLowerCase();
+		// }
+		//
+		// if (subApp == this.main) {
+		// 	subApp = null;
+		// }
+		//
+		// if (subApp !== null) {
+		// 	var found = false;
+		// 	var d = 0;
+		// 	var dl = this.subDomains.length;
+		//
+		// 	while (!found && d < dl) {
+		// 		if (this.subDomains[d] == subApp) found = true;
+		// 		d++;
+		// 	}
+		//
+		// 	if (!found) {
+		// 		return null;
+		// 	}
+		// }
+		//
+		// // If just slash
+		// if (url == "/") {
+		// 	return {
+		// 		subApp: subApp,
+		// 		controller: Jumbo.Application.Application.defaultController,
+		// 		action: Jumbo.Application.Application.defaultAction,
+		// 		params: []
+		// 	};
+		// }
+		//
+		// var parse = $url.parse(url);
+		//
+		// // // Slash params
+		// // var slashParams = parse.pathname.split("/");
+		// //
+		// // // Remove first empty
+		// // slashParams.shift();
+		//
+		// // Query params
+		// var queryParams = $qs.parse(parse.query);
+		//
+		//
+		//
+		//
+		//
+		// // var tmp = url.split("?");
+		// url = parse.pathname;//.slice(1); // Slice remove first slash
+		//
+		// var matched = false;
+		// var match;
+		// var c = this.locations.length;
+		// var locIndex;
+		//
+		// // Try to match
+		// for (var i = 0; !matched && i < c; i++) {
+		// 	match = url.match(this.locations[i].regex);
+		//
+		// 	if (match !== null && ((subApp === null && this.locations[i].subApp == this.main) || subApp == this.locations[i].subApp || this.locations[i].subApp === null)) {
+		// 		locIndex = i;
+		// 		matched = true;
+		// 	}
+		// }
+		//
+		// // If not matched before, try to match with added action
+		// if (!matched) {
+		// 	var tmpUrl;
+		// 	var justController = url.match(/^\/[a-z]+$/); // If only /controller
+		// 	for (i = 0; !matched && i < c; i++) {
+		// 		tmpUrl = url;
+		// 		if (justController) {
+		// 			tmpUrl += this.delimiter + Jumbo.Application.Application.defaultAction;
+		// 		}
+		//
+		// 		match = tmpUrl.match(this.locations[i].regex);
+		//
+		// 		if (match !== null && ((subApp === null && this.locations[i].subApp == this.main) || subApp == this.locations[i].subApp || this.locations[i].subApp === null)) {
+		// 			locIndex = i;
+		// 			matched = true;
+		// 		}
+		// 	}
+		// }
+		//
+		// if (matched) {
+		// 	var res = {
+		// 		subApp: subApp,
+		// 		controller: !this.locations[locIndex].targeted ? match[this.locations[locIndex].controllerIndex + 1] : this.locations[locIndex].controller,
+		// 		action: !this.locations[locIndex].targeted ? (match[this.locations[locIndex].actionIndex + 1] || Jumbo.Application.Application.defaultAction) : this.locations[locIndex].action,
+		// 		params: Jumbo.Utils.Object.clone(this.locations[locIndex].actionParams),
+		// 		location: this.locations[locIndex]
+		// 	};
+		//
+		// 	c = match.length;
+		//
+		// 	if (!this.locations[locIndex].targeted) {
+		// 		// Slash params
+		// 		for (i = 1; i < c; i++) {
+		// 			if (i != this.locations[locIndex].controllerIndex + 1 && i != this.locations[locIndex].actionIndex + 1) {
+		// 				res.params.push(match[i] || null);
+		// 			}
+		// 		}
+		// 	} else {
+		// 		for (i = 1; i < c; i++) {
+		// 			res.params.push(match[i]);
+		// 		}
+		// 	}
+		//
+		// 	// Query params
+		// 	res.params.push($qs.parse(tmp[1] || ""));
+		//
+		// 	return res;
+		// }
+		//
+		// return null;
+	}
+
+	//</editor-fold>
+}
+
+class LocatorActivator extends Locator { }
+
+module.exports = Locator;

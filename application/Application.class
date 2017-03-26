@@ -1,0 +1,1223 @@
+/**
+ * This file is part of Jumbo framework for Node.js
+ * Written by Roman Jámbor
+ */
+
+"use strict";
+
+//<editor-fold desc="Requires">
+
+const $fs = require("fs");
+const $less = require("less");
+const $path = require("path");
+const $cluster = require("cluster");
+const $formidable = require("formidable");
+
+const $clusterCmds = require("../cluster/cluster-messaging");
+const fileExtensionToMimeMap = require("../utils/file-extension-to-mime-map");
+const Jumplate = require("jumbo-template");
+const $cfg = require("../config");
+
+var $https = null;
+var $http = null;
+
+if (Jumbo.Config.protocol.protocol == $cfg.Protocols.Https) {
+	$https = require("https");
+} else {
+	$http = require("http");
+}
+
+var Log = Jumbo.Logging.Log;
+
+//</editor-fold>
+
+// Number of seconds, time for collecting data, after that time are limits (amplified by this number) checked
+var checkIntervalTime = 5;
+
+/**
+ * Class which contain HTTP server and do all the basic job around requests.
+ * It cares about static files, POST data, routing, creation of controllers and calling actions
+ * @memberOf Jumbo.Application
+ */
+class Application {
+
+	//<editor-fold desc="Virtual Definitions">
+
+	/**
+	 * Virtual callback for staticFileResolver handler function
+	 * @callback staticFileResolverCallback
+	 * @paam {Error} error
+	 * @param {Stream} fileStream
+	 * @param {String} mime MIME file type
+	 * @param {Number} size Size of file
+	 */
+
+	/**
+	 * Virtual function describing interface of staticFileResolverCallback handler
+	 * @callback staticFileResolverHandler
+	 * @param {String} fileName
+	 * @param {staticFileResolverCallback} callback
+	 */
+
+	/**
+	 * @callback banIpListener
+	 * @param {String} ip
+	 */
+
+	//</editor-fold>
+
+	//<editor-fold desc="Static Properties">
+
+	/**
+	 * Default controller name
+	 * @type {string}
+	 */
+	static get defaultController() {
+		return "Home";
+	}
+
+	/**
+	 * Default action name
+	 * @type {string}
+	 */
+	static get defaultAction() {
+		return "index"
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Ctor">
+
+	/**
+	 * Constructs Application
+	 */
+	constructor() {
+		/**
+		 * HTTP server
+		 * @private
+		 */
+		this.server = null;
+
+		/**
+		 * Will be true after completing all startup tasks.
+		 * This fields is checked by interval in runWhenReady
+		 * @private
+		 * @type {boolean}
+		 */
+		this.serverIsReady = false;
+
+		/**
+		 * Will be true after setting up http server
+		 * @type {boolean}
+		 */
+		this.serverIsRunning = false;
+
+		/**
+		 * HTTP server port
+		 * @private
+		 * @type {number}
+		 */
+		this.port = 80;
+
+		/**
+		 * Request statistics (for blocking and banning)
+		 * @private
+		 * @type {{}}
+		 */
+		this.requests = { // Loaded from config, these values are default
+			limit: 0, // 0  disabled
+			totalCount: 0,
+			checkInterval: null,
+
+			limitIP: 0,
+			banTime: 3600,
+			countPerIP: {
+				/*
+				 "xxx.xxx.xxx.xxx": Number // Number of request in last second from given IP
+				 */
+			},
+			blockedIPs: {
+				/*
+				 "xxx.xxx.xxx.xxx": Time() // Ban end time
+				 */
+			}
+		};
+
+		/**
+		 * Locator for adress verifying and resolving
+		 * @private
+		 * @type {Jumbo.Application.Locator}
+		 */
+		this.locator = Jumbo.Application.Locator.instance;
+
+		/**
+		 * DIContainer for resolving rependencies
+		 * @private
+		 * @type {Jumbo.Ioc.DIContainer}
+		 */
+		this.diContainer = Jumbo.Ioc.DIContainer.instance;
+
+		/**
+		 * Controller factory
+		 * @private
+		 * @type {Jumbo.Application.ControllerFactory}
+		 */
+		this.controllerFactory = Jumbo.Application.ControllerFactory.instance;
+
+		/**
+		 * Memory sessions
+		 * @private
+		 * @type {{}}
+		 */
+		this.sessions = {};
+
+		/**
+		 * Current size of saved session data
+		 * // TODO: Implement
+		 * @private
+		 * @type {number}
+		 */
+		this.sessionsSize = 0;
+
+		/**
+		 * Memory cache for compiled templates
+		 * @private
+		 * @type {{}}
+		 */
+		this.memoryCache = {};
+
+		/**
+		 * Current size of cached templates
+		 * @private
+		 * @type {number}
+		 */
+		this.memoryCacheSize = 0;
+
+		/**
+		 * Handler which should return file for given URL
+		 * @private
+		 * @type {staticFileResolverHandler}
+		 */
+		this.staticFileResolver = (fileName, callback) => {
+			$fs.lstat(fileName, (error, stats) => {
+				if (error) {
+					callback(error, null);
+					return;
+				}
+
+				if (stats.isFile()) {
+					var mime = fileExtensionToMimeMap[$path.extname(fileName).slice(1)];
+					callback(null, $fs.createReadStream(fileName), mime, stats.size);
+				} else if (stats.isDirectory()) {
+					callback(new Error("Accessing folder content is not allowed."));
+				} else {
+					callback(new Error("File not found."));
+				}
+			});
+		};
+
+		/**
+		 * Listener which will be called when after IP block
+		 * @private
+		 * @type {null}
+		 */
+		this.blockIpListener = null;
+
+
+		// Array for actions creating sequence
+		var startActionSequence = [
+			(done) => {
+				// Create HTTP server
+				this.createServer();
+
+				done();
+			},
+			() => {
+				this.serverIsReady = true;
+				this.initClustering();
+			}
+		];
+
+		// Only for main process
+		if ($cluster.isMaster) {
+			// Remove createServer from sequence
+			if (!Jumbo.Config.debugMode) {
+				startActionSequence.shift();
+			}
+
+			// Compile less
+			startActionSequence.unshift((done) => {
+				this.compileLESS(() => {
+					done();
+				});
+			});
+		}
+
+		new Jumbo.Sync.Sync(startActionSequence);
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Public Methods">
+
+	/**
+	 * Return Locator instance
+	 * @returns {Jumbo.Application.Locator}
+	 */
+	getLocator() {
+		return this.locator;
+	}
+
+	/**
+	 * Return DI Container
+	 * @returns {Jumbo.Ioc.DIContainer}
+	 */
+	getDIContainer() {
+		return this.diContainer;
+	}
+
+	/**
+	 * Set handler for resolving static files
+	 * @param {Function} handler
+	 */
+	setStaticFileResolver(handler) {
+		this.staticFileResolver = handler;
+	}
+
+	/**
+	 * You can obtain blocked IPs through your listener registered here
+	 * @param {banIpListener} listener
+	 */
+	setBlockIpListener(listener) {
+		if (typeof listener != "function") {
+			throw new Error("Listener must be function!");
+		}
+
+		this.blockIpListener = listener;
+	}
+
+	/**
+	 * Register sign that you want to run application. Application is gonna be run when ready.
+	 * @param {Number} port
+	 * @param {Function} callback
+	 */
+	runWhenReady(port, callback) {
+		this.port = port;
+
+		var interval = setInterval(() => {
+			if (this.serverIsReady === true) {
+				clearInterval(interval);
+
+				if ($cluster.isMaster) {
+					console.timeEnd("Application Master load-time: ");
+
+					if (!Jumbo.Config.debugMode) {
+						callback();
+						return;
+					}
+				}
+
+				// Listen on given port
+				this.server.listen(this.port, () => {
+
+					this.serverIsRunning = true;
+
+					// Print by framework registered load-time timer
+					if (!Jumbo.Config.debugMode) {
+						console.timeEnd("Application Worker " + $cluster.worker.id + " load-time: ");
+
+						//Invoke worker ready
+						$clusterCmds.invoke($clusterCmds.Commands.WorkerReady);
+					} else {
+						// Logged when in debugMode; from Master
+						Log.line("Server is running on port " + this.port, Log.LogTypes.Start, 0);
+					}
+
+					callback();
+				});
+			}
+		}, 50);
+	}
+
+	/**
+	 * Exit application
+	 */
+	exit() {
+		if ($cluster.isMaster) {
+			Log.line("Exiting application...", Log.LogTypes.Std, 0);
+		} else {
+			Log.line("Exiting child process...", Log.LogTypes.Std, 0);
+			$clusterCmds.invoke($clusterCmds.Commands.ExitApp);
+		}
+		process.exit(0);
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Private Methods">
+
+	/**
+	 * Initiate application clustering
+	 * @private
+	 */
+	initClustering() {
+		if ($cluster.isMaster) {
+			// Fork this process - start clustering
+			if (Jumbo.Config.clustering && typeof Jumbo.Config.clustering.numberOfWorkers == "number"
+				&& !Jumbo.Config.debugMode) {
+
+				var cpuCount = Jumbo.Config.clustering.numberOfWorkers == 0
+					? require('os').cpus().length
+					: Jumbo.Config.clustering.numberOfWorkers;
+
+				for (var c = 0; c < cpuCount; c++) {
+					$cluster.fork()/*.on("error", (error) => {
+					 Log.error("!!!! ERROR");
+					 })*/;
+				}
+
+				var numberOfWorkerReady = 0;
+
+				$cluster.on("exit", (worker, code, signal) => {
+					Log.line("Worker exited with code: " + code);
+
+					// wanted exit
+					if (code == 0) return;
+
+					// Refork process after 1 sec
+					setTimeout(() => {
+						Log.line("Reforking worker");
+						$cluster.fork();
+					}, 1000);
+				}).on("message", (worker, message) => {
+					Log.line("[Worker " + worker.id + "] sent message: " + JSON.stringify(message),
+						Log.LogTypes.Std, Log.LogLevels.TalkativeCluster);
+
+					switch (message.invokeAction) {
+						// Logging
+						case $clusterCmds.Commands.Log:
+							Log.line(message.invokeData.message, message.invokeData.type, message.invokeData.level);
+							break;
+						// WorkerReady
+						case $clusterCmds.Commands.WorkerReady:
+							numberOfWorkerReady++;
+							if (numberOfWorkerReady == cpuCount) {
+								Log.line("Server is running on port " + this.port, Log.LogTypes.Start, 0);
+							}
+							break;
+						case $clusterCmds.Commands.ExitApp:
+							this.exit();
+							break;
+						default:
+							Log.warning("Not implemented cluster message (code " + message.invokeAction + ").");
+							break;
+					}
+				});
+			}
+		} else {
+			process.on('uncaughtException', function (err) {
+				Log.error(err.message + "\n" + err.stack);
+				process.exit(1)
+			});
+		}
+	}
+
+	/**
+	 * Compile specific LESS file
+	 * @private
+	 * @param {String} file Less file path
+	 * @param {Jumbo.Sync.Waiter} waiter
+	 */
+	compileLessFile(file, waiter) {
+		return $fs.readFile(file, "utf-8", (err, data) => {
+			if (err) {
+				//noinspection JSAccessibilityCheck
+				Log.warning("Error ocurs while reading file '" + file
+					+ "' while less compiling.", Log.LogTypes.Start, Log.LogLevels.Warning);
+				return waiter.kick();
+			}
+
+			// Compile less to css with compression
+			$less.render(data, {compress: true}, (err, compiled) => {
+				if (err) {
+					//noinspection JSAccessibilityCheck
+					Log.warning("Error ocurs while compiling less style '" + file
+						+ "' in styles compiling processBlock.", Log.LogTypes.Start, Log.LogLevels.Warning);
+					return waiter.kick();
+				}
+
+				// create name for CSS file
+				file = file.substr(0, file.length - 5) + ".css";
+
+				// Write to CSS file
+				$fs.writeFile(file, compiled.css, (err) => {
+					if (err) {
+						//noinspection JSAccessibilityCheck
+						Log.warning("Error ocurs while writing compiled file '" + file
+							+ "' in styles compiling processBlock.", Log.LogTypes.Start, Log.LogLevels.Warning);
+						return waiter.kick();
+					}
+
+					//noinspection JSAccessibilityCheck
+					Log.line("Less style was compiled into '" + file + "'", Log.LogTypes.Start, Log.LogLevels.Normal);
+					waiter.kick();
+				});
+			});
+		});
+	}
+
+	/**
+	 * Method go through CSS directory and compile all .less files to .css
+	 * @private
+	 */
+	compileLESS(callback) {
+		var cssPath = $path.join(Jumbo.PUBLIC_DIR, "styles");
+
+		$fs.readdir(cssPath, (err, files) => {
+			if (err) {
+				Log.error(err.message);
+				return;
+			}
+
+			var waiter = new Jumbo.Sync.Waiter(files.length, () => {
+				// Watch STYLES directory
+				var nextChangeAfter = null;
+
+				$fs.watch(cssPath, (event, fileName) => {
+					if (fileName.slice(-5) != ".less") {
+						return;
+					}
+
+					// Windows emit rename for change so all event types must be accepted
+					// if (event != "change") return;
+
+					// Cuz some systems emit more messages for one event
+					setTimeout(() => {
+						if (nextChangeAfter != null && (new Date()).getTime() < nextChangeAfter) return;
+						nextChangeAfter = new Date().getTime() + 1000;
+
+						this.compileLessFile($path.join(cssPath, fileName), {
+							kick: function () {
+							}
+						}); // Fiktivní waiter
+					}, 100);
+				});
+
+				callback();
+			});
+
+			files.forEach((file) => {
+				if (file.substr(-5) != ".less") {
+					return waiter.kick();
+				}
+
+				this.compileLessFile($path.join(cssPath, file), waiter);
+			});
+		});
+	}
+
+	//noinspection JSMethodCanBeStatic
+	/**
+	 * Returns IP address from given reques
+	 * @private
+	 * @param request
+	 * @returns {String}
+	 */
+	getClientIP(request) {
+		return request.headers['X-Forwarded-For'] || request.connection.remoteAddress;
+	}
+
+	/**
+	 * Create http server
+	 * @private
+	 */
+	createServer() {
+		if (Jumbo.Config.maxRequestPerSecond !== 0) {
+			// Initiate request count limits
+			this.requests.limit = Jumbo.Config.maxRequestPerSecond || this.requests.limit;
+			this.requests.checkInterval = setInterval(() => {
+				this.requests.totalCount = 0;
+				this.requests.countPerIP = {};
+			}, checkIntervalTime * 1000);
+		}
+
+		// Initiate DDOS limits
+		if (Jumbo.Config.DOSPrevention && Jumbo.Config.DOSPrevention.enabled === true) {
+			this.requests.limitIP = Jumbo.Config.DOSPrevention.maxRequestPerIP || this.requests.limitIP;
+			this.requests.banTime = Jumbo.Config.DOSPrevention.blockTime || this.requests.banTime;
+		} else if (Jumbo.Config.DOSPrevention && Jumbo.Config.DOSPrevention.enabled === false) {
+			this.requests.limitIP = 0;
+		}
+
+		if ($https) {
+			var options = {};
+
+			if (Jumbo.Config.protocol.privateKey && Jumbo.Config.protocol.certificate) {
+				try {
+					options.key = $fs.readFileSync($path.resolve(Jumbo.BASE_DIR, Jumbo.Config.protocol.privateKey));
+					options.cert = $fs.readFileSync($path.resolve(Jumbo.BASE_DIR, Jumbo.Config.protocol.certificate));
+				} catch (ex) {
+					Log.error("Error ocurs while reading private key or certificate. " + ex.message);
+					this.exit();
+					return;
+				}
+			} else if (Jumbo.Config.protocol.pfx) {
+				try {
+					options.pfx = $fs.readFileSync($path.resolve(Jumbo.BASE_DIR, Jumbo.Config.protocol.pfx));
+				} catch (ex) {
+					Log.error("Error ocurs while reading pkcs archive. " + ex.message);
+					this.exit();
+					return;
+				}
+			} else {
+				Log.error("You have not configured HTTPS server properly, key or certificate missing.");
+				this.exit();
+				return;
+			}
+
+			if (Jumbo.Config.protocol.passphrase) {
+				options.passphrase = Jumbo.Config.protocol.passphrase;
+			}
+
+			this.server = $https.createServer(options, (req, res) => this.serverCallback(req, res));
+		} else {
+			this.server = $http.createServer((req, res) => this.serverCallback(req, res));
+		}
+
+		this.server.on("error", (err) => {
+			if (err !== null) {
+				Log.error("Server couldn't be started. Maybe port is blocked.\n" + err.message, Log.LogTypes.Std);
+				this.exit();
+			}
+		});
+	}
+
+	/**
+	 * End request as plain/text with content length header
+	 * @param message
+	 * @param code
+	 */
+	plainResponse(response, message, code) {
+		response.writeHead(code, {"Content-Type": "text/plain", "Content-Length": Buffer.byteLength(message, "utf-8")});
+		response.end(message);
+	}
+
+	// Server callback for http or https server
+	/**
+	 * Method accepting request from HTTP server (or called from Tests)
+	 * @private
+	 * @param {http.IncomingMessage} request
+	 * @param {http.OutgoingMessage} response
+	 */
+	serverCallback(request, response) {
+		// X-Poweder-By
+		response.setHeader("X-Powered-By", "Jumbo");
+
+		// request start time
+		var requestBeginTime = new Date().getTime();
+
+		// Check / process maximal request count
+		if (this.requests.limit != 0) {
+			if (++this.requests.totalCount > this.requests.limit * checkIntervalTime) {
+				this.plainResponse(response, "We're sorry but server reject your request because of overload.", 503);
+
+				// Log in first case of overload
+				if (this.requests.totalCount == this.requests.limit + 1) {
+					Log.warning("Limit of request per second was reached. Last request come from: "
+						+ this.getClientIP(request), Log.LogTypes.Http, Log.LogLevels.Talkative);
+				}
+				return;
+			}
+		}
+
+		var clientIP = this.getClientIP(request);
+
+		// Check / process maximal request count per IP
+		if (this.requests.limitIP != 0) {
+			// If IP in ban list
+			if (this.requests.blockedIPs[clientIP]) {
+				if (this.requests.blockedIPs[clientIP] <= new Date().getTime()) { // Ban ends
+					delete this.requests.blockedIPs[clientIP];
+				} else {
+					this.plainResponse(response, "We're sorry but server reject your request.", 503);
+					return;
+				}
+			}
+
+			if (!this.requests.countPerIP[clientIP]) {
+				this.requests.countPerIP[clientIP] = 1;
+			} else {
+				// Log in first case of overload
+				if (++this.requests.countPerIP[clientIP] > this.requests.limitIP * checkIntervalTime) {
+					this.requests.blockedIPs[clientIP] = new Date().getTime() + this.requests.banTime * 1000;
+					Log.warning("Client from ip " + clientIP + " reached the ip/requests/sec limit and was blocked.", Log.LogTypes.Http);
+
+					// Send blocked IP to listener if registered
+					if (this.blockIpListener != null) {
+						this.blockIpListener(clientIP);
+					}
+				}
+			}
+		}
+
+		// Check if url ends with delimiter - redirect to url without delimiter
+		var urlWithoutEndingDelim;
+		if (urlWithoutEndingDelim = request.url.match(new RegExp("^(.+)" + this.locator.delimiter + "+$"))) {
+			Log.line("Url ends with delimiter(s), redirecting to url without it.", Log.LogTypes.Http, Log.LogLevels.Talkative);
+			this.redirectResponse(response, urlWithoutEndingDelim[1]);
+			return;
+		}
+
+		// Check if request is requesting static file
+		if (request.method == "GET" && request.url.slice(0, 7) == "/public") {
+			var url = decodeURI(request.url);
+
+			this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size) => {
+				if (error) {
+					this.displayError(request, response, {
+						status: 404,
+						message: "File '" + url + "' error. " + error.message
+					});
+					return;
+				}
+
+				Log.line("Streaming static file '" + url + "'.", Log.LogTypes.Http, Log.LogLevels.Talkative);
+
+				response.writeHead(200, {"Content-Type": mime, "Content-Length": size});
+				fileStream.pipe(response);
+			});
+			return;
+		}
+
+		// Rest of action continue in differ method
+		this.processRequest(request, response, requestBeginTime);
+	}
+
+	/**
+	 * Redirect to given URL
+	 * @private
+	 * @param response
+	 * @param {String} url
+	 */
+	redirectResponse(response, url) {
+		response.writeHead(302, {"Location": url});
+		response.end();
+	}
+
+	/**
+	 * Return error page to client; try to find <errCode>.html in data/errors
+	 * @private
+	 * @param request
+	 * @param response
+	 * @param {{status: Number, message: String}} err
+	 */
+	displayError(request, response, err) {
+		var errFile = $path.resolve(Jumbo.ERR_DIR, err.status + ".html");
+
+		if ($fs.existsSync(errFile)) {
+			if (err.message != null)
+				Log.warning("Error while serving " + request.url + "; Client " + this.getClientIP(request) + "; "
+					+ err.message, Log.LogTypes.Http);
+
+			this.staticFileResolver(errFile, (error, fileStream, mime, size) => {
+				if (error) {
+					Log.error("Applicaton.displayError(): " + error.message);
+					this.displayError(request, response, {status: 404, message: "File '" + errFile + "' not found."});
+					return;
+				}
+
+				response.writeHead(err.status, {"Content-Type": "text/html", "Content-Length": size});
+				fileStream.pipe(response);
+			});
+		} else {
+			try {
+				this.plainResponse(response, err.status, "Status code " + err.status + "\nWe're sorry but some error occurs.");
+			} catch (ex) {
+				Log.error(ex.message, Log.LogTypes.Std);
+			}
+
+			if (err.message != null)
+				Log.warning("Error while serving " + request.url + "; Error file doesn't exists; " + err.message,
+					Log.LogTypes.Http);
+		}
+	}
+
+	/**
+	 * Check if URL is in long format (contain default controller or action) or not,
+	 * if so, redirect to short-format URL, if not, call callback
+	 * @private
+	 * @param {Jumbo.Application.Request} req
+	 * @param {Function} callback
+	 */
+	checkURL(req, callback) {
+		// Index page
+		if (new RegExp("^/" + Jumbo.Application.Application.defaultController
+				+ "(" + this.locator.delimiter + Jumbo.Application.Application.defaultAction + ")?$", ["i"]).test(req.request.url)
+		) {
+			Log.line("Request for main page in long format -> redirect", Log.LogTypes.Http, Log.LogLevels.Talkative);
+			req.redirectURL("/");
+			return;
+		}
+
+		// Default action
+		if (new RegExp("^/[a-zA-Z0-9]+" + this.locator.delimiter + Jumbo.Application.Application.defaultAction + "$", ["i"])
+			.test(req.request.url)
+		) {
+			req.redirect(req.controller, Jumbo.Application.Application.defaultAction);
+			return;
+		}
+
+		callback();
+	}
+
+	/**
+	 * Process POST request, get data and files
+	 * @private
+	 * @param {Jumbo.Applicaton.Request} req
+	 * @param {Function} callback
+	 */
+	processPotentialPostAndContinue(req, callback) {
+		if (req.request.method != "POST") {
+			callback(null, null, null);
+			return;
+		}
+
+		var end = false;
+
+		var form = new $formidable.IncomingForm();
+		form.uploadDir = Jumbo.UPLOAD_DIR;
+		form.keepExtensions = true;
+
+		form.on("progress", () => {
+			if (form.bytesExpected > (Jumbo.Config.maxPostDataSize || 5e6)) {
+				end = true;
+				form.emit("error", "Post data received is too big");
+				this.displayError(req.request, req.response, {
+					status: 413,
+					message: "Post data received is too big"
+				});
+				req.request.connection.destroy();
+			}
+		});
+
+		form.parse(req.request, (err, fields, files) => {
+			if (end) {
+				return;
+			}
+
+			if (err) {
+				callback(err, null, null);
+				return;
+			}
+
+			callback(null, fields, files);
+		});
+	}
+
+	/**
+	 * Call action request, build parameters to by method requested order
+	 * @private
+	 * @param controller
+	 * @param actionName
+	 * @param {Jumbo.Application.Request} request
+	 */
+	callControllerAction(controller, actionName, request) {
+		if (Jumbo.Config.debugMode) {
+			console.log("[DEBUG] Application.callControllerAction() called");
+		}
+
+		if (controller[actionName]) {
+			var args = [];
+			var actionArgs = [];
+			var controllerIdentifier = this.controllerFactory.getControllerName(request.controller).toLowerCase();
+			var actionIdetifier = actionName.toLowerCase();
+
+			if (request.subApp == null) {
+				actionArgs = this.controllerFactory.controllers[controllerIdentifier].actions[actionIdetifier].args;
+			} else {
+				actionArgs = this.controllerFactory.subApp[request.subApp.toLowerCase()]
+					.controllers[controllerIdentifier].actions[actionIdetifier].args;
+			}
+
+			for (var i = 0; i < actionArgs.length; i++) {
+				args.push(request.params[actionArgs[i]] || null);
+			}
+
+			controller[actionName].apply(controller, args);
+		}
+	}
+
+	/**
+	 * Call controller's action
+	 * @param req
+	 * @param cntrll
+	 */
+	callAction(req, cntrll) {
+		if (Jumbo.Config.debugMode) {
+			console.log("[DEBUG] Application.callAction() called");
+		}
+
+		var actionName;
+
+		if (req.subApp) {
+			actionName = this.controllerFactory.getSubAppActionName(req.subApp, req.controller, req.action);
+		} else {
+			actionName = this.controllerFactory.getActionName(req.controller, req.action);
+		}
+
+		var cntrlParent = Object.getPrototypeOf(cntrll.constructor);
+
+		if (cntrlParent.prototype['beforeActions']) {
+			cntrlParent.prototype['beforeActions'].call(cntrll, () => {
+				if (!cntrll.exited) {
+					if (cntrll.beforeActions) {
+						cntrll.beforeActions(() => {
+							if (!cntrll.exited) {
+								this.callControllerAction(cntrll, actionName, req);
+							}
+						});
+					} else {
+						this.callControllerAction(cntrll, actionName, req);
+					}
+				}
+			});
+		} else if (cntrll.beforeActions) {
+			cntrll.beforeActions(() => {
+				if (!cntrll.exited) {
+					this.callControllerAction(cntrll, actionName, req);
+				}
+			});
+		} else {
+			this.callControllerAction(cntrll, actionName, req);
+		}
+	}
+
+	/**
+	 * Controller's callback
+	 * @param {Error} err
+	 * @param {Object} info
+	 * @param {Jumbo.Base.Controller} cntrll
+	 */
+	controllerCallback(err, info, cntrll) {
+		if (Jumbo.Config.debugMode) {
+			console.log("[DEBUG] Application.processRequest controllerCallback() called");
+		}
+
+		var req = cntrll.request;
+		var request = req.request;
+		var response = req.response;
+
+		// Save session, only if some data exists in session
+		if (cntrll.session && Object.keys(cntrll.session).length != 0) {
+			// To memory
+			this.sessions[req.sessionId] = cntrll.session;
+
+			// To disk
+			$fs.writeFile($path.join(Jumbo.SESSION_DIR, req.sessionId + ".session"),
+				JSON.stringify(cntrll.session), "utf-8", () => {});
+		}
+
+		if (err !== null) {
+			this.displayError(request, response, {
+				status: err.status,
+				message: err.message
+			});
+			return;
+		}
+
+		if (!info) {
+			return this.displayError(request, response, {
+				status: 500,
+				message: "Controller's callback called with no error but no data for rendering was specified."
+			});
+		}
+
+		if (info.wasReturned) {
+			return Log.line(`${request.method.toUpperCase()} ${req.noCache ? "no-cached " : ""}${request.host + request.url}`
+				+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
+		}
+
+		// Process template
+		try {
+			var tplCacheFileName = (req.subApp || "Default") + "-";
+
+			if (info.view) {
+				tplCacheFileName += info.view.replace(/[^\w\\\/]/g, "").replace(/[\/\\]/g, "-");
+
+				if (info.isSingle) {
+					tplCacheFileName += "_single-template";
+				}
+			} else {
+				tplCacheFileName += req.controller + "-" + req.action;
+				info.view = req.controller + "/" + req.action;
+			}
+
+			tplCacheFileName += ".tplcache";
+
+			var tplCacheFile = $path.join(Jumbo.CACHE_DIR, tplCacheFileName);
+
+			$fs.access(tplCacheFile, $fs.constants.R_OK, (err) => {
+				//Jumplate instace
+				var template = null;
+
+				/**
+				 * Render action's template
+				 * @param error
+				 * @param {Jumplate} compiledtemplate
+				 */
+				var render = (error, compiledtemplate) => {
+					if (error) {
+						this.displayError(request, response, {
+							status: 500,
+							message: error.message
+						});
+
+						return;
+					}
+
+					// New compilation, cache that
+					if (compiledtemplate) {
+						$fs.writeFile(tplCacheFile, compiledtemplate, () => {
+						});
+					}
+
+					// TODO: implementovat
+					// template.registerHelpers();
+					template.registerLocalizator((key) => {
+						console.log("Implementovat lokalizátor");
+					});
+
+					template.render(info.data, (err, output) => {
+						req.header["Content-Length"] = Buffer.byteLength(output, "utf-8");
+						response.writeHead(200, req.header);
+						response.end(output);
+
+						return Log.line(`${request.method.toUpperCase()} ${req.noCache ? "no-cached " : ""}${request.url}`
+							+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
+					});
+				};
+
+				// Cached template doesn't exists or No-Cache received
+				if (err || req.noCache) {
+					var appPath = Jumbo.APP_DIR;
+
+					if (req.subApp != null) {
+						appPath = $path.join(Jumbo.APP_DIR, "sub-apps", this.controllerFactory.subApp[req.subApp].dir);
+					}
+
+					var templatePath = $path.join(appPath, "templates", info.view + ".tpl");
+
+					if (info.isSingle) {
+						if (Jumbo.Config.debugMode) {
+							console.log("Render single template", templatePath);
+						}
+
+						template = new Jumplate(null, templatePath);
+					} else {
+						var layoutPath = $path.join(appPath, "templates", "layout.tpl");
+
+						if (Jumbo.Config.debugMode) {
+							console.log("Render template", templatePath, "with layout", layoutPath);
+						}
+
+						template = new Jumplate(null, templatePath, null, layoutPath);
+					}
+
+					template.compile(render);
+				} else {
+					$fs.readFile(tplCacheFile, "utf-8", (err, content) => {
+						if (err) {
+							render(err, null);
+							return;
+						}
+
+						template = Jumplate.fromCache(content);
+						render(null, null);
+					});
+				}
+			});
+		} catch (ex) {
+			this.displayError(request, response, {
+				status: 500,
+				message: ex.message + ex.stack
+			});
+		}
+	}
+
+	/**
+	 * Initialize controller and init action call
+	 * @param {Jumbo.Application.Request} req
+	 * @param {Jumbo.Base.Controller} cntrll
+	 * @param {Object} session
+	 * @param {Jumbo.Ioc.Scope} scope
+	 */
+	initController(req, cntrll, session, scope) {
+		// Init controller
+		cntrll.initController(req, session, (err, info) => {
+			this.controllerCallback(err, info, cntrll);
+		}, scope);
+
+		if (req.body != null) {
+			// Process POST, reconstruct model and validate it
+
+			// if (fields['j-form-id']) {
+			// 	var formID = Jumbo.Utils.Hash.decodeEasyHash(fields['j-form-id']);
+			// 	var form = Jumbo.Base.BasePresenter.forms[formID];
+			//
+			// 	if (form) {
+			// 		delete fields['j-form-id'];
+			//
+			// 		// Před předáním dat musíme zpracovat a ošetřit data
+			// 		var data = form.validateData(fields);
+			// 		fields = data[0];
+			//
+			// 		if (data[1].length > 0) {
+			// 			if (cntrll.isAjax()) {
+			// 				cntrll.returnJSON({formErrorMessages: data[1]});
+			//
+			// 				cntrll = null;
+			// 				getControllerCallback = null;
+			// 				actionCall = null;
+			//
+			// 				return;
+			// 			}
+			//
+			// 			cntrll.template.formErrorMessages = data[1];
+			// 			actionCall();
+			// 			return;
+			// 		}
+			//
+			// 		// Předáme data
+			// 		form.onSend(fields, files, cntrll, actionCall);
+			// 	} else {
+			// 		Log.warning("Some POST comes but no form with this id '" + formID + "' is registered", Log.STD);
+			// 		actionCall();
+			// 	}
+			// } else {
+			this.callAction(req, cntrll);
+			// }
+		} else {
+			this.callAction(req, cntrll);
+		}
+	}
+
+	/**
+	 * Process incoming request
+	 * @private
+	 * @param request
+	 * @param response
+	 * @param requestBeginTime
+	 * @returns {*}
+	 */
+	processRequest(request, response, requestBeginTime) {
+		//noinspection JSAccessibilityCheck
+		Jumbo.Application.Request.buildRequest(request, response, this.locator, requestBeginTime, (err, req) => {
+			if (Jumbo.Config.debugMode) {
+				console.log("[DEBUG] Application.processRequest request builded by Application.processRequest()", err);
+			}
+
+			if (err) {
+				if (err instanceof Jumbo.Exceptions.UrlIsNotValidException) {
+					// Check if url ends with slash
+					if (request.url != "/" && request.url.slice(-1) == "/") {
+						Log.line("Requested url is not valid - ends with slash => redirect",
+							Log.LogTypes.Http, Log.LogLevels.Talkative);
+						this.redirectResponse(response, request.url.slice(0, request.url.length - 1));
+						return;
+					}
+
+					this.displayError(request, response, {
+						status: 404,
+						message: "Requested url '" + request.headers.host + request.url + "' is not valid. Does not match any Locator's location"
+					});
+					return;
+				} else if (err instanceof Jumbo.Exceptions.ControllerOrActionDoesntExistsException) {
+					this.displayError(request, response, {
+						status: 404,
+						message: "Requested url '" + request.headers.host + request.url + "' is not valid. " + err.message
+					});
+					return;
+				}
+
+				this.displayError(request, response, {
+					status: 500,
+					message: "Unknown error ocurs in Application.processRequest's callback"
+				});
+				return;
+			}
+
+			this.checkURL(req, () => {
+				if (Jumbo.Config.debugMode) {
+					console.log("[DEBUG] Application.processRequest url checked by Application.checkURL()");
+				}
+
+				this.processPotentialPostAndContinue(req, (error, fields, files) => {
+					if (Jumbo.Config.debugMode) {
+						console.log("[DEBUG] Request target suapp:", req.subApp, "controller:", req.controller, "action:", req.action);
+					}
+
+					// If POST comes
+					if (fields || files) {
+						req.body = {
+							fields: fields,
+							files: files
+						};
+					}
+
+					// Create DI Scope for controller
+					var scope = new Jumbo.Ioc.Scope();
+
+					var cntrll;
+
+					if (req.subApp !== null) {
+						cntrll = this.controllerFactory.createSubAppController(req.subApp, req.controller, scope);
+					} else {
+						cntrll = this.controllerFactory.createController(req.controller, scope);
+					}
+
+					if (cntrll === null) {
+						this.displayError(request, response, {
+							status: 404,
+							message: "File not found"
+						});
+						return;
+					}
+
+					// Get user session ID from cookies
+					var userSessId = req.getCookie(Jumbo.Config.session.sessionsCookieName);
+
+					// Load sessions from memory
+					var session = this.sessions[userSessId];
+
+					// if session in not in this.sessions, try to load session from file
+					if (session == undefined) {
+						// If session is justInMemory, ignore saved session
+						if (Jumbo.Config.session.justInMemory === true) {
+							this.initController(req, cntrll, {}, scope);
+						} else {
+							$fs.readFile($path.join(Jumbo.SESSION_DIR, userSessId + ".session"), "utf-8", (err, sessJson) => {
+								var storedSession = {};
+
+								// Sessin not exists
+								if (!err) {
+									try {
+										storedSession = JSON.parse(sessJson);
+									} catch (e) {
+									}
+								}
+
+								this.initController(req, cntrll, storedSession, scope);
+							});
+						}
+					} else {
+						this.initController(req, cntrll, session, scope);
+					}
+				});
+			});
+		});
+	}
+
+	//</editor-fold
+}
+
+module.exports = Application;

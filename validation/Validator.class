@@ -1,0 +1,25 @@
+/**
+ * @memberOf Jumbo.Validation
+ */
+class Validator {
+
+
+	constructor() {
+		this.properties = [];
+	}
+
+	setRule(expr) {
+		return new Jumbo.Validation.PropertyValidator(expr);
+	}
+
+	validate(model) {
+		var errors = [];
+		var err;
+
+		for (var p = 0; p < this.properties.length; ++) {
+			if ((err = this.properties[p].validate(model))) {
+				errors.push(err);
+			}
+		}
+	}
+}

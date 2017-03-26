@@ -1,0 +1,222 @@
+/**
+ * This file is part of Jumbo framework for Node.js
+ * Written by Roman Jámbor
+ */
+
+'use strict';
+
+//<editor-fold desc="Requires">
+
+const $newLine = require("os").EOL;
+const $fs = require("fs");
+const $path = require("path");
+const $cluster = require("cluster");
+const $clusterCmds = require("../cluster/cluster-messaging");
+
+const $cfg = require(Jumbo.CFG_PATH);
+const config = Jumbo.Config;
+
+//</editor-fold>
+
+/**
+ * Static class for logging
+ * @class
+ * @memberOf Jumbo.Logging
+ */
+class Log {
+
+	//<editor-fold desc="Static Properties">
+
+	//noinspection JSValidateTypes
+	/**
+	 * Log types
+	 * @readonly
+	 * @returns {{Http: Jumbo.Logging.Log.LogTypes, Std: Jumbo.Logging.Log.LogTypes, Start: Jumbo.Logging.Log.LogTypes}}
+	 * @constructor
+	 */
+	static get LogTypes() {
+		return {
+			/** @type {Jumbo.Logging.Log.LogTypes} */
+			Http: "http",
+			/** @type {Jumbo.Logging.Log.LogTypes} */
+			Std: "std",
+			/**
+			 * @type {Jumbo.Logging.Log.LogTypes}
+			 * @private
+			 */
+			Start: "start"
+		};
+	}
+
+	//noinspection JSValidateTypes
+	/**
+	 * Log levels
+	 * @readonly
+	 * @returns {{Error: Jumbo.Logging.Log.LogLevels, Warning: Jumbo.Logging.Log.LogLevels, Normal: Jumbo.Logging.Log.LogLevels, Talkative: Jumbo.Logging.Log.LogLevels, TalkativeCluster: Jumbo.Logging.Log.LogLevels}}
+	 * @constructor
+	 */
+	static get LogLevels() {
+		return {
+			/** @type {Jumbo.Logging.Log.LogLevels} */
+			Error: 1,
+			/** @type {Jumbo.Logging.Log.LogLevels} */
+			Warning: 2,
+			/** @type {Jumbo.Logging.Log.LogLevels} */
+			Normal: 3,
+			/** @type {Jumbo.Logging.Log.LogLevels} */
+			Talkative: 4,
+			/** @type {Jumbo.Logging.Log.LogLevels} */
+			TalkativeCluster: 5
+		};
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Virtual Callbacks">
+
+	/**
+	 * @callback logFunctionHandler
+	 * @param {String} message Message to log
+	 * @param {Jumbo.Logging.Log.LogTypes} [type] Log type
+	 */
+
+	//</editor-fold>
+
+	//<editor-fold desc="Public Methods">
+
+	/**
+	 * Log error
+	 * @param message Message to log
+	 * @param {Jumbo.Logging.Log.LogTypes} [type] Log type
+	 * @param {Jumbo.Logging.Log.LogLevels} [level] Log level
+	 */
+	static error(message, type, level) {
+		Log.line("ERROR: " + message, type, level || Log.LogLevels.Error);
+	}
+
+	/**
+	 * Log warning
+	 * @param message Message to log
+	 * @param {Jumbo.Logging.Log.LogTypes} [type] Log type
+	 * @param {Jumbo.Logging.Log.LogLevels} [level] Log level
+	 */
+	static warning(message, type, level) {
+		Log.line("WARNING: " + message, type, level || Log.LogLevels.Warning);
+	}
+
+	/**
+	 * Log line
+	 * @param message Message to log
+	 * @param {Jumbo.Logging.Log.LogTypes} [type] Log type
+	 * @param {Jumbo.Logging.Log.LogLevels} [level] Log level
+	 */
+	static line(message, type, level) {
+		if (!Jumbo.Config.log.enabled) {
+			return;
+		}
+
+		type = type || Log.LogTypes.Std || "std";
+		level = level || Log.LogLevels.Normal;
+
+		if (level <= Log.level) {
+			if ($cluster.isMaster) Log.logFunction(message, type);
+			else {
+				message = "[Worker " + $cluster.worker.id + "] " + message;
+				$clusterCmds.invoke($clusterCmds.Commands.Log, {
+					message: message,
+					type: type,
+					level: level
+				});
+			}
+		}
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Private Methods">
+
+	/**
+	 * Return actual formated time
+	 * @private
+	 * @returns {string}
+	 */
+	static curTime() {
+		var d = new Date();
+
+		function edit(a) {
+			return a.toString().length == 1 ? ("0" + a) : a;
+		}
+
+		return d.getFullYear() + "-" + edit(d.getMonth()) + "-" + edit(d.getDate()) + " " + edit(d.getHours()) + ":" + edit(d.getMinutes()) + ":" + edit(d.getSeconds());
+	}
+
+	/**
+	 * Initialize log
+	 * @private
+	 */
+	static init() {
+		if (config.log.enabled === true) {
+			if ($fs.lstatSync(Log.dir).isDirectory()) {
+				this.which = this.curTime().replace(/[: ]/g, "-");
+				this.isInitiated = true;
+			}
+		}
+	}
+
+	//</editor-fold>
+}
+
+//<editor-fold desc="Static Fields">
+
+/**
+ * @private
+ */
+Log.isInitiated = false;
+
+/**
+ * @private
+ */
+Log.dir = Jumbo.LOG_DIR;
+
+/**
+ * Time stamp
+ * @private
+ */
+Log.which = null;
+
+/**
+ * Logging level, taken from config
+ * @type {Configurations.LogLevels}
+ */
+Log.level = config.log.level;
+
+/**
+ * You can change how you want to log; set custom handler to this property
+ * @type {logFunctionHandler}
+ */
+Log.logFunction = function (message, type) {
+	//noinspection JSUnresolvedFunction
+	message = Log.curTime() + " [" + type.toUpperCase() + "] " + message;
+
+	if (Jumbo.Config.deployment == $cfg.Deployment.Development) {
+		console.log(message);
+	}
+
+	if (Log.isInitiated) {
+		$fs.appendFile($path.resolve(Log.dir, type + "-" + Log.which + ".log"), message + $newLine, function (err) {
+			if (err != null) {
+				console.error("Error ocurs while writing into log.\n" + err);
+			}
+		});
+	}
+};
+
+//</editor-fold>
+
+/**
+ * Log Initialization
+ */
+//noinspection JSAccessibilityCheck
+Log.init();
+
+module.exports = Log;

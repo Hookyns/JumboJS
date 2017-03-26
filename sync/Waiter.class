@@ -1,0 +1,36 @@
+/**
+ * This file is part of Jumbo framework for Node.js
+ * Written by Roman Jámbor
+ */
+
+/**
+ * Class which call given callback after given number of kicks
+ * @memberOf Jumbo.Sync
+ */
+class Waiter {
+	/**
+	 * @param {Number} count Count of requested kicks before calling callback
+	 * @param {Function} callback Callback to be called
+	 * @constructs
+	 */
+	constructor(count, callback) {
+		this.total = count;
+		this.count = 0;
+		this.callback = callback;
+
+		if (count == 0) {
+			callback();
+		}
+	}
+
+	/**
+	 * Call next iteration
+	 */
+	kick() {
+		if (++this.count == this.total) {
+			this.callback();
+		}
+	}
+}
+
+module.exports = Waiter;

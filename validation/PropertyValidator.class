@@ -1,0 +1,37 @@
+/**
+ * @memberOf Jumbo.Validation
+ */
+class PropertyValidator {
+
+	constructor(expr) {
+		this.expr = expr;
+	}
+
+	validate(model) {
+
+	}
+
+	required() {
+
+	}
+
+	notEmpty() {
+
+	}
+
+	numeric() {
+
+	}
+
+	length() {
+
+	}
+
+	greaterThan() {
+
+	}
+
+	lessThan() {
+
+	}
+}
