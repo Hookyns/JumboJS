@@ -379,17 +379,17 @@ class Application {
 				var numberOfWorkerReady = 0;
 
 				$cluster.on("exit", (worker, code, signal) => {
-					Log.line("Worker exited with code: " + code);
+					Log.line(`Worker ${worker.id} exited with code: ${code | signal}`);
 
 					// wanted exit
 					if (code == 0) return;
 
 					// Refork process after 1 sec
 					setTimeout(() => {
-						Log.line("Reforking worker");
+						Log.line(`Reforking worker ${worker.id}`);
 						$cluster.fork();
 					}, 1000);
-				}).on("message", (worker, message) => {
+				}).on("message", /** @param {Worker} worker */(worker, message) => {
 					Log.line("[Worker " + worker.id + "] sent message: " + JSON.stringify(message),
 						Log.LogTypes.Std, Log.LogLevels.TalkativeCluster);
 
@@ -408,6 +408,13 @@ class Application {
 						case $clusterCmds.Commands.ExitApp:
 							this.exit();
 							break;
+						case $clusterCmds.Commands.RestartWorker:
+							$cluster.fork().on("online", () => {
+								setTimeout(() => {
+									worker.send({ exit: 0});
+								}, 1000);
+							});
+							break;
 						default:
 							Log.warning("Not implemented cluster message (code " + message.invokeAction + ").");
 							break;
@@ -415,9 +422,13 @@ class Application {
 				});
 			}
 		} else {
-			process.on('uncaughtException', function (err) {
+			process.on("uncaughtException", function (err) {
 				Log.error(err.message + "\n" + err.stack);
 				process.exit(1)
+			}).on("message", (message) => {
+				if (message.hasOwnProperty("exit")) {
+					process.exit(message.exit);
+				}
 			});
 		}
 	}
@@ -714,6 +725,11 @@ class Application {
 	displayError(request, response, err) {
 		var errFile = $path.resolve(Jumbo.ERR_DIR, err.status + ".html");
 
+		// err.error - for showing errors in browser in the future
+		if (!err.message && err.error) {
+			err.message = err.error.message;
+		}
+
 		if ($fs.existsSync(errFile)) {
 			if (err.message != null)
 				Log.warning("Error while serving " + request.url + "; Client " + this.getClientIP(request) + "; "
@@ -821,7 +837,7 @@ class Application {
 	 * @param actionName
 	 * @param {Jumbo.Application.Request} request
 	 */
-	callControllerAction(controller, actionName, request) {
+	async callControllerAction(controller, actionName, request) {
 		if (Jumbo.Config.debugMode) {
 			console.log("[DEBUG] Application.callControllerAction() called");
 		}
@@ -843,7 +859,13 @@ class Application {
 				args.push(request.params[actionArgs[i]] || null);
 			}
 
-			controller[actionName].apply(controller, args);
+			try {
+				await controller[actionName].apply(controller, args);
+			} catch (error) {
+				try {
+					this.displayError(request.request, request.response, { status: 500, error: error});
+				} catch (err) { }
+			}
 		}
 	}
 
@@ -1009,7 +1031,7 @@ class Application {
 
 					if (info.isSingle) {
 						if (Jumbo.Config.debugMode) {
-							console.log("Render single template", templatePath);
+							console.log("[DEBUG] Render single template", templatePath);
 						}
 
 						template = new Jumplate(null, templatePath);
@@ -1017,7 +1039,7 @@ class Application {
 						var layoutPath = $path.join(appPath, "templates", "layout.tpl");
 
 						if (Jumbo.Config.debugMode) {
-							console.log("Render template", templatePath, "with layout", layoutPath);
+							console.log("[DEBUG] Render template", templatePath, "with layout", layoutPath);
 						}
 
 						template = new Jumplate(null, templatePath, null, layoutPath);

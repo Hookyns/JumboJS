@@ -310,6 +310,11 @@ class ControllerFactory {
 		for (var p = 0; p < c; p++) {
 			controller = objs[p].toLowerCase();
 
+			if (App.Controllers[objs[p]].prototype == undefined) {
+				Jumbo.Logging.Log.error(`App.Controllers.${objs[p]} doesn't export class.`);
+				continue;
+			}
+
 			// Create object for controller
 			this.controllers[controller] = {
 				name: objs[p],
@@ -358,6 +363,11 @@ class ControllerFactory {
 
 			for (var p = 0; p < c; p++) {
 				controller = objs[p].toLowerCase();
+
+				if (App.SubApps[subApps[sp]].Controllers[objs[p]].prototype == undefined) {
+					Jumbo.Logging.Log.error(`App.Controllers.SubApps.${subApps[sp]}.${objs[p]} doesn't export class.`);
+					continue;
+				}
 
 				// Create object for controller
 				this.subApp[subApp].controllers[controller] = {

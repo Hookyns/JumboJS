@@ -12,6 +12,7 @@
 const $fs = require("fs");
 const $path = require("path");
 const $cluster = require("cluster");
+const $clusterCmds = require("../cluster/cluster-messaging");
 
 // Add support for .class extension
 require.extensions['.class'] = require.extensions['.js'];
@@ -22,6 +23,8 @@ function loadDir(dir) {
 	var list = $fs.readdirSync(dir);
 
 	list.forEach(function (fileName) {
+		if (fileName.charAt(0) == "." || fileName == "node_modules") return;
+
 		var file = $path.resolve(dir, fileName);
 		var stat = $fs.lstatSync(file);
 		var name;
@@ -32,30 +35,51 @@ function loadDir(dir) {
 				name = (fileName.charAt(0).toUpperCase() + fileName.substr(1)).replace(/-(.)/g, function (_, upChar) {
 					return upChar.toUpperCase();
 				});
-				result[name] = loadDir(file);
+
+				let ns = loadDir(file);
+				result[name] = ns;
 
 				if ($cluster.isWorker && file.slice(0, Jumbo.APP_DIR.length) == Jumbo.APP_DIR) {
 					// Enable watching over app directory - reload after some change
 					var nextChangeAfter = null;
+
 					$fs.watch(file, function (event, fileName) {
 						if (fileName.slice(-6) != ".class" && fileName.slice(-3) != ".js") return;
 
-						// Windows emit rename for change so all event types must be accepted
-						// if (event != "change") return;
-
 						// Cuz some systems emit more messages for one event
-						setTimeout(() => {
+						setTimeout(async() => {
 							if (nextChangeAfter != null && (new Date()).getTime() < nextChangeAfter) return;
 							nextChangeAfter = new Date().getTime() + 1000;
 
-							file = $path.join(file, fileName);
+							var classPath = $path.join(file, fileName);
+							var cls = fileName.replace(/\.((js)|(class))$/, "");
 
-							// If will file changed, it'll be deleted from require cache and loaded again after somebody call created namespace accessor
-							Jumbo.Logging.Log.line("File " + file + " changed - reload",
-								Jumbo.Logging.Log.LogTypes.Std, Jumbo.Logging.Log.LogLevels.Talkative);
+							var inNS = ns.hasOwnProperty(cls);
 
-							delete require.cache[file];
-						});
+							// Check if changed file was deleted or not
+							var removed = inNS ? await new Promise((c) => {
+								$fs.access(classPath, (err) => {
+									c(!!err)
+								});
+							}) : false;
+
+							// // New file added - reload process
+							// if (!inNS || removed) {
+								$clusterCmds.invoke($clusterCmds.Commands.RestartWorker);
+
+								Jumbo.Logging.Log.line(`File ${classPath} ${removed ? "removed" : (inNS ? "changed" : "added")} - reload`,
+									Jumbo.Logging.Log.LogTypes.Std, Jumbo.Logging.Log.LogLevels.Talkative);
+							// }
+							//
+							// // Just changed - clear require cache
+							// else {
+							// 	// If will file changed, it'll be deleted from require cache and loaded again after somebody call created namespace accessor
+							// 	Jumbo.Logging.Log.line("File " + classPath + " changed - clearing require cache",
+							// 		Jumbo.Logging.Log.LogTypes.Std, Jumbo.Logging.Log.LogLevels.Talkative);
+							//
+							// 	delete require.cache[file];
+							// }
+						}, 1000);
 					});
 				}
 			} else if (stat.isFile()) {

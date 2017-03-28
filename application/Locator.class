@@ -346,6 +346,10 @@ class Locator {
 				return this.delimiter + action.toLowerCase();
 			}
 
+			if (params[varName]) {
+				return this.delimiter + params[varName];
+			}
+
 			if (location.options[varName]) {
 				return this.delimiter + location.options[varName];
 			}
@@ -427,8 +431,6 @@ class Locator {
 
 		// Path
 		url = parse.pathname.slice(1); // Slice remove first slash
-
-		console.log("url", url);
 
 		var matched = false;
 		var match;

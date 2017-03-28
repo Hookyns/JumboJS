@@ -214,13 +214,13 @@ class Controller {
 	 * @param data
 	 * @param {String} [type] Content-type
 	 */
-	returnData(data, type) {
+	returnData(data, type = "text/plain") {
 		this.exited = true;
 		if (type && type.trim().length != 0) {
 			this.request.header['Content-Type'] = type;
 		}
 
-		this.request.header["Content-Length"] = Buffer.byteLength(data, [encoding]);
+		this.request.header["Content-Length"] = Buffer.byteLength(data, "utf-8");
 
 		this.request.response.writeHead(200, this.request.header);
 		this.request.response.end(data);

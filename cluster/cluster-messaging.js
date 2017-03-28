@@ -30,7 +30,16 @@ var ClusterCommands = {
 		/** @type {ClusterCommands.Commands} */
 		WorkerReady: 3,
 		/** @type {ClusterCommands.Commands} */
-		ExitApp: 4
+		ExitApp: 4,
+		/** @type {ClusterCommands.Commands} */
+		RestartWorker: 5
+	},
+
+	ExitCommands: {
+		/** @type {ClusterCommands.ExitCommands} */
+		Exit: 0,
+		/** @type {ClusterCommands.ExitCommands} */
+		Restart: 1
 	}
 };
 
