@@ -503,9 +503,7 @@ class Locator {
 			var queryParams = $qs.parse(parse.query);
 
 			for (var qp in queryParams) {
-				if (queryParams.hasOwnProperty(qp)) {
-					res.params[qp] = queryParams[qp];
-				}
+				res.params[qp] = queryParams[qp];
 			}
 
 			return res;
