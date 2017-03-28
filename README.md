@@ -24,4 +24,5 @@ Docs not completed yet.
 - sessions stored on disk and in memory for faster access,
 - integrated email sender (soon),
 - native async & await support,
+- high performance - 2 000 requests per second with one worker (2,33 GHz core),
 - low dependecy - just few packages from 3rd party, it means that everything is made right for JumboJS
