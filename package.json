@@ -1,25 +1,25 @@
 {
-	"name": "jumbo-core",
-	"version": "0.2.0",
-	"description": "Modern fast enterprise level MVC framework for Node.js",
-	"author": {
-		"name": "Roman Jámbor",
-		"email": "swat.hawkyns@seznam.cz"
-	},
-	"main": "loader.js",
-	"dependencies": {
-		"formidable": ">=1.0.17",
-		"less": ">=2.7.0"
-	},
-	"engines": {
-		"node": ">=7.7.0"
-	},
-	"license": "MIT",
-	"repository": {
-		"type": "git",
-		"url": "http://github.com/Hookyns/JumboJS.git"
-	},
-	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
-	}
+  "name": "jumbo-core",
+  "version": "0.2.1",
+  "description": "Modern fast enterprise level MVC framework for Node.js",
+  "author": {
+    "name": "Roman Jámbor",
+    "email": "swat.hawkyns@seznam.cz"
+  },
+  "main": "loader.js",
+  "dependencies": {
+    "formidable": ">=1.0.17",
+    "less": ">=2.7.0"
+  },
+  "engines": {
+    "node": ">=7.7.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "http://github.com/Hookyns/JumboJS.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
 }
