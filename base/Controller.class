@@ -173,15 +173,28 @@ class Controller {
 
 	/**
 	 * Ends request and return single view without layout
-	 * @param {String} singleView Name of specific full view
+	 * @param {String} [singleView] Name of specific view
 	 * @param {Object} [data] Data object
 	 */
-	singleView(singleView, data = null) {
+	singleView(singleView = null, data = null) {
 		this.exited = true;
 		this.callback(null, {
 			view: singleView,
 			isSingle: true,
 			data: data || {}
+		});
+		this.callback = function() { };
+	}
+
+	/**
+	 * Return raw not rendered view
+	 */
+	rawView(view = null) {
+		this.exited = true;
+		this.callback(null, {
+			view: view,
+			isRaw: true, // TODO: Implement
+			data: {}
 		});
 		this.callback = function() { };
 	}

@@ -187,6 +187,13 @@ class Application {
 		this.memoryCache = {};
 
 		/**
+		 * Array creating FIFO queue which will hold memoryCache IDs in order as added
+		 * If memoryCacheSize will be reached, first added ID will be removed
+		 * @type {Array}
+		 */
+		this.memoryCacheQueue = [];
+
+		/**
 		 * Current size of cached templates
 		 * @private
 		 * @type {number}
@@ -356,6 +363,8 @@ class Application {
 
 	//<editor-fold desc="Private Methods">
 
+	//<editor-fold desc="Booting Methods">
+
 	/**
 	 * Initiate application clustering
 	 * @private
@@ -411,7 +420,7 @@ class Application {
 						case $clusterCmds.Commands.RestartWorker:
 							$cluster.fork().on("online", () => {
 								setTimeout(() => {
-									worker.send({ exit: 0});
+									worker.send({exit: 0});
 								}, 1000);
 							});
 							break;
@@ -527,17 +536,6 @@ class Application {
 		});
 	}
 
-	//noinspection JSMethodCanBeStatic
-	/**
-	 * Returns IP address from given reques
-	 * @private
-	 * @param request
-	 * @returns {String}
-	 */
-	getClientIP(request) {
-		return request.headers['X-Forwarded-For'] || request.connection.remoteAddress;
-	}
-
 	/**
 	 * Create http server
 	 * @private
@@ -603,15 +601,9 @@ class Application {
 		});
 	}
 
-	/**
-	 * End request as plain/text with content length header
-	 * @param message
-	 * @param code
-	 */
-	plainResponse(response, message, code) {
-		response.writeHead(code, {"Content-Type": "text/plain", "Content-Length": Buffer.byteLength(message, "utf-8")});
-		response.end(message);
-	}
+	//</editor-fold>
+
+	//<editor-fold desc="Request Process Methods">
 
 	// Server callback for http or https server
 	/**
@@ -702,425 +694,6 @@ class Application {
 
 		// Rest of action continue in differ method
 		this.processRequest(request, response, requestBeginTime);
-	}
-
-	/**
-	 * Redirect to given URL
-	 * @private
-	 * @param response
-	 * @param {String} url
-	 */
-	redirectResponse(response, url) {
-		response.writeHead(302, {"Location": url});
-		response.end();
-	}
-
-	/**
-	 * Return error page to client; try to find <errCode>.html in data/errors
-	 * @private
-	 * @param request
-	 * @param response
-	 * @param {{status: Number, message: String}} err
-	 */
-	displayError(request, response, err) {
-		var errFile = $path.resolve(Jumbo.ERR_DIR, err.status + ".html");
-
-		// err.error - for showing errors in browser in the future
-		if (!err.message && err.error) {
-			err.message = err.error.message;
-		}
-
-		if ($fs.existsSync(errFile)) {
-			if (err.message != null)
-				Log.warning("Error while serving " + request.url + "; Client " + this.getClientIP(request) + "; "
-					+ err.message, Log.LogTypes.Http);
-
-			this.staticFileResolver(errFile, (error, fileStream, mime, size) => {
-				if (error) {
-					Log.error("Applicaton.displayError(): " + error.message);
-					this.displayError(request, response, {status: 404, message: "File '" + errFile + "' not found."});
-					return;
-				}
-
-				response.writeHead(err.status, {"Content-Type": "text/html", "Content-Length": size});
-				fileStream.pipe(response);
-			});
-		} else {
-			try {
-				this.plainResponse(response, err.status, "Status code " + err.status + "\nWe're sorry but some error occurs.");
-			} catch (ex) {
-				Log.error(ex.message, Log.LogTypes.Std);
-			}
-
-			if (err.message != null)
-				Log.warning("Error while serving " + request.url + "; Error file doesn't exists; " + err.message,
-					Log.LogTypes.Http);
-		}
-	}
-
-	/**
-	 * Check if URL is in long format (contain default controller or action) or not,
-	 * if so, redirect to short-format URL, if not, call callback
-	 * @private
-	 * @param {Jumbo.Application.Request} req
-	 * @param {Function} callback
-	 */
-	checkURL(req, callback) {
-		// Index page
-		if (new RegExp("^/" + Jumbo.Application.Application.defaultController
-				+ "(" + this.locator.delimiter + Jumbo.Application.Application.defaultAction + ")?$", ["i"]).test(req.request.url)
-		) {
-			Log.line("Request for main page in long format -> redirect", Log.LogTypes.Http, Log.LogLevels.Talkative);
-			req.redirectURL("/");
-			return;
-		}
-
-		// Default action
-		if (new RegExp("^/[a-zA-Z0-9]+" + this.locator.delimiter + Jumbo.Application.Application.defaultAction + "$", ["i"])
-			.test(req.request.url)
-		) {
-			req.redirect(req.controller, Jumbo.Application.Application.defaultAction);
-			return;
-		}
-
-		callback();
-	}
-
-	/**
-	 * Process POST request, get data and files
-	 * @private
-	 * @param {Jumbo.Applicaton.Request} req
-	 * @param {Function} callback
-	 */
-	processPotentialPostAndContinue(req, callback) {
-		if (req.request.method != "POST") {
-			callback(null, null, null);
-			return;
-		}
-
-		var end = false;
-
-		var form = new $formidable.IncomingForm();
-		form.uploadDir = Jumbo.UPLOAD_DIR;
-		form.keepExtensions = true;
-
-		form.on("progress", () => {
-			if (form.bytesExpected > (Jumbo.Config.maxPostDataSize || 5e6)) {
-				end = true;
-				form.emit("error", "Post data received is too big");
-				this.displayError(req.request, req.response, {
-					status: 413,
-					message: "Post data received is too big"
-				});
-				req.request.connection.destroy();
-			}
-		});
-
-		form.parse(req.request, (err, fields, files) => {
-			if (end) {
-				return;
-			}
-
-			if (err) {
-				callback(err, null, null);
-				return;
-			}
-
-			callback(null, fields, files);
-		});
-	}
-
-	/**
-	 * Call action request, build parameters to by method requested order
-	 * @private
-	 * @param controller
-	 * @param actionName
-	 * @param {Jumbo.Application.Request} request
-	 */
-	async callControllerAction(controller, actionName, request) {
-		if (Jumbo.Config.debugMode) {
-			console.log("[DEBUG] Application.callControllerAction() called");
-		}
-
-		if (controller[actionName]) {
-			var args = [];
-			var actionArgs = [];
-			var controllerIdentifier = this.controllerFactory.getControllerName(request.controller).toLowerCase();
-			var actionIdetifier = actionName.toLowerCase();
-
-			if (request.subApp == null) {
-				actionArgs = this.controllerFactory.controllers[controllerIdentifier].actions[actionIdetifier].args;
-			} else {
-				actionArgs = this.controllerFactory.subApp[request.subApp.toLowerCase()]
-					.controllers[controllerIdentifier].actions[actionIdetifier].args;
-			}
-
-			for (var i = 0; i < actionArgs.length; i++) {
-				args.push(request.params[actionArgs[i]] || null);
-			}
-
-			try {
-				await controller[actionName].apply(controller, args);
-			} catch (error) {
-				try {
-					this.displayError(request.request, request.response, { status: 500, error: error});
-				} catch (err) { }
-			}
-		}
-	}
-
-	/**
-	 * Call controller's action
-	 * @param req
-	 * @param cntrll
-	 */
-	callAction(req, cntrll) {
-		if (Jumbo.Config.debugMode) {
-			console.log("[DEBUG] Application.callAction() called");
-		}
-
-		var actionName;
-
-		if (req.subApp) {
-			actionName = this.controllerFactory.getSubAppActionName(req.subApp, req.controller, req.action);
-		} else {
-			actionName = this.controllerFactory.getActionName(req.controller, req.action);
-		}
-
-		var cntrlParent = Object.getPrototypeOf(cntrll.constructor);
-
-		if (cntrlParent.prototype['beforeActions']) {
-			cntrlParent.prototype['beforeActions'].call(cntrll, () => {
-				if (!cntrll.exited) {
-					if (cntrll.beforeActions) {
-						cntrll.beforeActions(() => {
-							if (!cntrll.exited) {
-								this.callControllerAction(cntrll, actionName, req);
-							}
-						});
-					} else {
-						this.callControllerAction(cntrll, actionName, req);
-					}
-				}
-			});
-		} else if (cntrll.beforeActions) {
-			cntrll.beforeActions(() => {
-				if (!cntrll.exited) {
-					this.callControllerAction(cntrll, actionName, req);
-				}
-			});
-		} else {
-			this.callControllerAction(cntrll, actionName, req);
-		}
-	}
-
-	/**
-	 * Controller's callback
-	 * @param {Error} err
-	 * @param {Object} info
-	 * @param {Jumbo.Base.Controller} cntrll
-	 */
-	controllerCallback(err, info, cntrll) {
-		if (Jumbo.Config.debugMode) {
-			console.log("[DEBUG] Application.processRequest controllerCallback() called");
-		}
-
-		var req = cntrll.request;
-		var request = req.request;
-		var response = req.response;
-
-		// Save session, only if some data exists in session
-		if (cntrll.session && Object.keys(cntrll.session).length != 0) {
-			// To memory
-			this.sessions[req.sessionId] = cntrll.session;
-
-			// To disk
-			$fs.writeFile($path.join(Jumbo.SESSION_DIR, req.sessionId + ".session"),
-				JSON.stringify(cntrll.session), "utf-8", () => {});
-		}
-
-		if (err !== null) {
-			this.displayError(request, response, {
-				status: err.status,
-				message: err.message
-			});
-			return;
-		}
-
-		if (!info) {
-			return this.displayError(request, response, {
-				status: 500,
-				message: "Controller's callback called with no error but no data for rendering was specified."
-			});
-		}
-
-		if (info.wasReturned) {
-			return Log.line(`${request.method.toUpperCase()} ${req.noCache ? "no-cached " : ""}${request.host + request.url}`
-				+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
-		}
-
-		// Process template
-		try {
-			var tplCacheFileName = (req.subApp || "Default") + "-";
-
-			if (info.view) {
-				tplCacheFileName += info.view.replace(/[^\w\\\/]/g, "").replace(/[\/\\]/g, "-");
-
-				if (info.isSingle) {
-					tplCacheFileName += "_single-template";
-				}
-			} else {
-				tplCacheFileName += req.controller + "-" + req.action;
-				info.view = req.controller + "/" + req.action;
-			}
-
-			tplCacheFileName += ".tplcache";
-
-			var tplCacheFile = $path.join(Jumbo.CACHE_DIR, tplCacheFileName);
-
-			$fs.access(tplCacheFile, $fs.constants.R_OK, (err) => {
-				//Jumplate instace
-				var template = null;
-
-				/**
-				 * Render action's template
-				 * @param error
-				 * @param {Jumplate} compiledtemplate
-				 */
-				var render = (error, compiledtemplate) => {
-					if (error) {
-						this.displayError(request, response, {
-							status: 500,
-							message: error.message
-						});
-
-						return;
-					}
-
-					// New compilation, cache that
-					if (compiledtemplate) {
-						$fs.writeFile(tplCacheFile, compiledtemplate, () => {
-						});
-					}
-
-					// TODO: implementovat
-					// template.registerHelpers();
-					template.registerLocalizator((key) => {
-						console.log("Implementovat lokalizátor");
-					});
-
-					template.render(info.data, (err, output) => {
-						req.header["Content-Length"] = Buffer.byteLength(output, "utf-8");
-						response.writeHead(200, req.header);
-						response.end(output);
-
-						return Log.line(`${request.method.toUpperCase()} ${req.noCache ? "no-cached " : ""}${request.url}`
-							+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
-					});
-				};
-
-				// Cached template doesn't exists or No-Cache received
-				if (err || req.noCache) {
-					var appPath = Jumbo.APP_DIR;
-
-					if (req.subApp != null) {
-						appPath = $path.join(Jumbo.APP_DIR, "sub-apps", this.controllerFactory.subApp[req.subApp].dir);
-					}
-
-					var templatePath = $path.join(appPath, "templates", info.view + ".tpl");
-
-					if (info.isSingle) {
-						if (Jumbo.Config.debugMode) {
-							console.log("[DEBUG] Render single template", templatePath);
-						}
-
-						template = new Jumplate(null, templatePath);
-					} else {
-						var layoutPath = $path.join(appPath, "templates", "layout.tpl");
-
-						if (Jumbo.Config.debugMode) {
-							console.log("[DEBUG] Render template", templatePath, "with layout", layoutPath);
-						}
-
-						template = new Jumplate(null, templatePath, null, layoutPath);
-					}
-
-					template.compile(render);
-				} else {
-					$fs.readFile(tplCacheFile, "utf-8", (err, content) => {
-						if (err) {
-							render(err, null);
-							return;
-						}
-
-						template = Jumplate.fromCache(content);
-						render(null, null);
-					});
-				}
-			});
-		} catch (ex) {
-			this.displayError(request, response, {
-				status: 500,
-				message: ex.message + ex.stack
-			});
-		}
-	}
-
-	/**
-	 * Initialize controller and init action call
-	 * @param {Jumbo.Application.Request} req
-	 * @param {Jumbo.Base.Controller} cntrll
-	 * @param {Object} session
-	 * @param {Jumbo.Ioc.Scope} scope
-	 */
-	initController(req, cntrll, session, scope) {
-		// Init controller
-		cntrll.initController(req, session, (err, info) => {
-			this.controllerCallback(err, info, cntrll);
-		}, scope);
-
-		if (req.body != null) {
-			// Process POST, reconstruct model and validate it
-
-			// if (fields['j-form-id']) {
-			// 	var formID = Jumbo.Utils.Hash.decodeEasyHash(fields['j-form-id']);
-			// 	var form = Jumbo.Base.BasePresenter.forms[formID];
-			//
-			// 	if (form) {
-			// 		delete fields['j-form-id'];
-			//
-			// 		// Před předáním dat musíme zpracovat a ošetřit data
-			// 		var data = form.validateData(fields);
-			// 		fields = data[0];
-			//
-			// 		if (data[1].length > 0) {
-			// 			if (cntrll.isAjax()) {
-			// 				cntrll.returnJSON({formErrorMessages: data[1]});
-			//
-			// 				cntrll = null;
-			// 				getControllerCallback = null;
-			// 				actionCall = null;
-			//
-			// 				return;
-			// 			}
-			//
-			// 			cntrll.template.formErrorMessages = data[1];
-			// 			actionCall();
-			// 			return;
-			// 		}
-			//
-			// 		// Předáme data
-			// 		form.onSend(fields, files, cntrll, actionCall);
-			// 	} else {
-			// 		Log.warning("Some POST comes but no form with this id '" + formID + "' is registered", Log.STD);
-			// 		actionCall();
-			// 	}
-			// } else {
-			this.callAction(req, cntrll);
-			// }
-		} else {
-			this.callAction(req, cntrll);
-		}
 	}
 
 	/**
@@ -1238,6 +811,488 @@ class Application {
 			});
 		});
 	}
+
+	/**
+	 * Check if URL is in long format (contain default controller or action) or not,
+	 * if so, redirect to short-format URL, if not, call callback
+	 * @private
+	 * @param {Jumbo.Application.Request} req
+	 * @param {Function} callback
+	 */
+	checkURL(req, callback) {
+		// Index page
+		if (new RegExp("^/" + Jumbo.Application.Application.defaultController
+				+ "(" + this.locator.delimiter + Jumbo.Application.Application.defaultAction + ")?$", ["i"]).test(req.request.url)
+		) {
+			Log.line("Request for main page in long format -> redirect", Log.LogTypes.Http, Log.LogLevels.Talkative);
+			req.redirectURL("/");
+			return;
+		}
+
+		// Default action
+		if (new RegExp("^/[a-zA-Z0-9]+" + this.locator.delimiter + Jumbo.Application.Application.defaultAction + "$", ["i"])
+			.test(req.request.url)
+		) {
+			req.redirect(req.controller, Jumbo.Application.Application.defaultAction);
+			return;
+		}
+
+		callback();
+	}
+
+	/**
+	 * Process POST request, get data and files
+	 * @private
+	 * @param {Jumbo.Applicaton.Request} req
+	 * @param {Function} callback
+	 */
+	processPotentialPostAndContinue(req, callback) {
+		if (req.request.method != "POST") {
+			callback(null, null, null);
+			return;
+		}
+
+		var end = false;
+
+		var form = new $formidable.IncomingForm();
+		form.uploadDir = Jumbo.UPLOAD_DIR;
+		form.keepExtensions = true;
+
+		form.on("progress", () => {
+			if (form.bytesExpected > (Jumbo.Config.maxPostDataSize || 5e6)) {
+				end = true;
+				form.emit("error", "Post data received is too big");
+				this.displayError(req.request, req.response, {
+					status: 413,
+					message: "Post data received is too big"
+				});
+				req.request.connection.destroy();
+			}
+		});
+
+		form.parse(req.request, (err, fields, files) => {
+			if (end) {
+				return;
+			}
+
+			if (err) {
+				callback(err, null, null);
+				return;
+			}
+
+			callback(null, fields, files);
+		});
+	}
+
+	/**
+	 * Initialize controller and init action call
+	 * @param {Jumbo.Application.Request} req
+	 * @param {Jumbo.Base.Controller} cntrll
+	 * @param {Object} session
+	 * @param {Jumbo.Ioc.Scope} scope
+	 */
+	initController(req, cntrll, session, scope) {
+		// Init controller
+		cntrll.initController(req, session, (err, info) => {
+			this.controllerCallback(err, info, cntrll);
+		}, scope);
+
+		if (req.body != null) {
+
+			// TODO: Process POST, reconstruct model and validate it
+
+			this.callAction(req, cntrll);
+		} else {
+			this.callAction(req, cntrll);
+		}
+	}
+
+	/**
+	 * Call controller's action
+	 * @param req
+	 * @param cntrll
+	 */
+	callAction(req, cntrll) {
+		if (Jumbo.Config.debugMode) {
+			console.log("[DEBUG] Application.callAction() called");
+		}
+
+		var actionName;
+
+		if (req.subApp) {
+			actionName = this.controllerFactory.getSubAppActionName(req.subApp, req.controller, req.action);
+		} else {
+			actionName = this.controllerFactory.getActionName(req.controller, req.action);
+		}
+
+		var cntrlParent = Object.getPrototypeOf(cntrll.constructor);
+
+		if (cntrlParent.prototype['beforeActions']) {
+			cntrlParent.prototype['beforeActions'].call(cntrll, () => {
+				if (!cntrll.exited) {
+					if (cntrll.beforeActions) {
+						cntrll.beforeActions(() => {
+							if (!cntrll.exited) {
+								this.callControllerAction(cntrll, actionName, req);
+							}
+						});
+					} else {
+						this.callControllerAction(cntrll, actionName, req);
+					}
+				}
+			});
+		} else if (cntrll.beforeActions) {
+			cntrll.beforeActions(() => {
+				if (!cntrll.exited) {
+					this.callControllerAction(cntrll, actionName, req);
+				}
+			});
+		} else {
+			this.callControllerAction(cntrll, actionName, req);
+		}
+	}
+
+	/**
+	 * Call action request, build parameters to by method requested order
+	 * @private
+	 * @param controller
+	 * @param actionName
+	 * @param {Jumbo.Application.Request} request
+	 */
+	async callControllerAction(controller, actionName, request) {
+		if (Jumbo.Config.debugMode) {
+			console.log("[DEBUG] Application.callControllerAction() called");
+		}
+
+		if (controller[actionName]) {
+			var args = [];
+			var actionArgs = [];
+			var controllerIdentifier = this.controllerFactory.getControllerName(request.controller).toLowerCase();
+			var actionIdetifier = actionName.toLowerCase();
+
+			if (request.subApp == null) {
+				actionArgs = this.controllerFactory.controllers[controllerIdentifier].actions[actionIdetifier].args;
+			} else {
+				actionArgs = this.controllerFactory.subApp[request.subApp.toLowerCase()]
+					.controllers[controllerIdentifier].actions[actionIdetifier].args;
+			}
+
+			for (var i = 0; i < actionArgs.length; i++) {
+				args.push(request.params[actionArgs[i]] || null);
+			}
+
+			try {
+				await controller[actionName].apply(controller, args);
+			} catch (error) {
+				try {
+					this.displayError(request.request, request.response, {status: 500, error: error});
+				} catch (err) {
+				}
+			}
+		}
+	}
+
+	/**
+	 * Controller's callback
+	 * @param {Error} err
+	 * @param {Object} info
+	 * @param {Jumbo.Base.Controller} cntrll
+	 */
+	controllerCallback(err, info, cntrll) {
+		if (Jumbo.Config.debugMode) {
+			console.log("[DEBUG] Application.processRequest controllerCallback() called");
+		}
+
+		var req = cntrll.request;
+		var request = req.request;
+		var response = req.response;
+
+		// Save session, only if some data exists in session
+		if (cntrll.session && Object.keys(cntrll.session).length != 0) {
+			// To memory
+			this.sessions[req.sessionId] = cntrll.session;
+
+			// To disk
+			$fs.writeFile($path.join(Jumbo.SESSION_DIR, req.sessionId + ".session"),
+				JSON.stringify(cntrll.session), "utf-8", () => {
+				});
+		}
+
+		if (err !== null) {
+			this.displayError(request, response, {
+				status: err.status,
+				message: err.message
+			});
+			return;
+		}
+
+		if (!info) {
+			return this.displayError(request, response, {
+				status: 500,
+				message: "Controller's callback called with no error but no data for rendering was specified."
+			});
+		}
+
+		if (info.wasReturned) {
+			return Log.line(`${request.method.toUpperCase()} ${req.noCache ? "no-cached " : ""}${request.host + request.url}`
+				+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
+		}
+
+		this.prepareView(info, req);
+	}
+
+	/**
+	 * Prepare view rendering
+	 * @param info
+	 * @param {Jumbo.Application.Request} req
+	 */
+	prepareView(info, req) {
+		var request = req.request;
+		var response = req.response;
+
+		var tplCacheFileName = (req.subApp || "Default") + "-";
+
+		if (info.view) {
+			tplCacheFileName += info.view.replace(/[^\w\\\/]/g, "").replace(/[\/\\]/g, "-");
+
+			if (info.isSingle) {
+				tplCacheFileName += "_single-template";
+			}
+		} else {
+			tplCacheFileName += req.controller + "-" + req.action;
+			info.view = req.controller + "/" + req.action;
+		}
+
+		tplCacheFileName += ".tplcache";
+
+		var tplCacheFile = $path.join(Jumbo.CACHE_DIR, tplCacheFileName);
+
+		/**
+		 * Render action's template
+		 * @param error
+		 * @param {String} compiledtemplate
+		 */
+		var render = (error, compiledtemplate, template) => {
+			this.renderView(error, compiledtemplate, req, tplCacheFile, template, info);
+		};
+
+		// Cached template doesn't exists or No-Cache received or caching is disabled
+		if (req.noCache || !Jumbo.Config.cache.enabled) {
+			this.compileTemplate(info, req, render);
+		} else {
+			if (this.memoryCacheQueue.indexOf(tplCacheFile) != -1) {
+				let template = Jumplate.fromCache(this.memoryCache[tplCacheFile]);
+				render(null, null, template);
+			} else {
+				$fs.readFile(tplCacheFile, "utf-8", (err, content) => {
+					if (err) {
+						this.compileTemplate(info, req, render);
+						return;
+					}
+
+					let template = Jumplate.fromCache(content);
+					render(null, null, template);
+				});
+			}
+		}
+	}
+
+	/**
+	 * Compile template
+	 * @param info
+	 * @param req
+	 * @param callback
+	 */
+	compileTemplate(info, req, callback) {
+		var appPath = Jumbo.APP_DIR;
+
+		if (req.subApp != null) {
+			appPath = $path.join(Jumbo.APP_DIR, "sub-apps", this.controllerFactory.subApp[req.subApp].dir);
+		}
+
+		var templatePath = $path.join(appPath, "templates", info.view + ".tpl");
+		var template;
+
+		if (info.isSingle) {
+			if (Jumbo.Config.debugMode) {
+				console.log("[DEBUG] Render single template", templatePath);
+			}
+
+			template = new Jumplate(null, templatePath);
+		} else {
+			var layoutPath = $path.join(appPath, "templates", "layout.tpl");
+
+			if (Jumbo.Config.debugMode) {
+				console.log("[DEBUG] Render template", templatePath, "with layout", layoutPath);
+			}
+
+			template = new Jumplate(null, templatePath, null, layoutPath);
+		}
+
+		template.compile((error, compiledtemplate) => {
+			callback(error, compiledtemplate, template);
+		});
+	}
+
+	/**
+	 * Render view
+	 * @param {Error} error
+	 * @param {String} compiledtemplate
+	 * @param {Jumbo.Application.Request} req
+	 * @param {String} tplCacheFile Cached template file name
+	 * @param {Jumplate} template
+	 */
+	renderView(error, compiledtemplate, req, tplCacheFile, template, info) {
+		var request = req.request;
+		var response = req.response;
+
+		if (error) {
+			this.displayError(request, response, {
+				status: 500,
+				message: error.message
+			});
+
+			return;
+		}
+
+		// New compilation, cache that
+		if (compiledtemplate && Jumbo.Config.cache.enabled) {
+			// Buffer.byteLength() should be used but .length on string is faster
+			// and diff in size shouldn't be big. Maybe if template will be full of >= 2B unicode characters
+			// then should be difference big (2x bigger or a little bit more)
+			//
+			// Buffer.byteLength() is 30 times slower
+
+			// Maybe logic of storing templates should be changed. Now last requested template is added to memory,
+			// but it should be better to track number of request for which template and keep the most
+			// requested templates
+
+			// If stored -> remove
+			if (this.memoryCache[tplCacheFile]) {
+				this.memoryCacheSize -= this.memoryCache[tplCacheFile].length; // <- Buffer.byteLength
+				delete this.memoryCache[tplCacheFile];
+			}
+
+			let size = compiledtemplate.length; // <- Buffer.byteLength
+
+			// If file can be saved to memory cache (fit limit)
+			if (size < Jumbo.Config.cache.memoryCacheSizeLimit) {
+				// clear old templates from memory cache and allow new template to save
+				while (this.memoryCacheSize + size > Jumbo.Config.cache.memoryCacheSizeLimit) {
+					let item = this.memoryCacheQueue.shift();
+					this.memoryCacheSize -= this.memoryCache[item].length; // <- Buffer.byteLength
+					delete this.memoryCache[item];
+				}
+
+				this.memoryCache[tplCacheFile] = compiledtemplate;
+				this.memoryCacheSize += size;
+				this.memoryCacheQueue.push(tplCacheFile);
+			}
+
+			$fs.writeFile(tplCacheFile, compiledtemplate, () => {
+			});
+		}
+
+		// TODO: implementovat
+		// template.registerHelpers();
+		template.registerLocalizator((key) => {
+			console.log("Implementovat lokalizátor");
+		});
+
+		template.render(info.data, (err, output) => {
+			req.header["Content-Length"] = Buffer.byteLength(output, "utf-8");
+			response.writeHead(200, req.header);
+			response.end(output);
+
+			// Check logging here because creating this log message contain a lot of logic so it
+			// can save resources if it'll not log after checking inside
+			if (Jumbo.Config.log.enabled && Log.level >= Log.LogLevels.Normal) {
+				Log.line(`${request.method.toUpperCase()} ${req.noCache ? "no-cached " : ""}${request.url}`
+					+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
+			}
+		});
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Helping Methods">
+
+	//noinspection JSMethodCanBeStatic
+	/**
+	 * Returns IP address from given reques
+	 * @private
+	 * @param request
+	 * @returns {String}
+	 */
+	getClientIP(request) {
+		return request.headers['X-Forwarded-For'] || request.connection.remoteAddress;
+	}
+
+	/**
+	 * End request as plain/text with content length header
+	 * @param message
+	 * @param code
+	 */
+	plainResponse(response, message, code) {
+		response.writeHead(code, {"Content-Type": "text/plain", "Content-Length": Buffer.byteLength(message, "utf-8")});
+		response.end(message);
+	}
+
+	/**
+	 * Redirect to given URL
+	 * @private
+	 * @param response
+	 * @param {String} url
+	 */
+	redirectResponse(response, url) {
+		response.writeHead(302, {"Location": url});
+		response.end();
+	}
+
+	/**
+	 * Return error page to client; try to find <errCode>.html in data/errors
+	 * @private
+	 * @param request
+	 * @param response
+	 * @param {{status: Number, message: String}} err
+	 */
+	displayError(request, response, err) {
+		var errFile = $path.resolve(Jumbo.ERR_DIR, err.status + ".html");
+
+		// err.error - for showing errors in browser in the future
+		if (!err.message && err.error) {
+			err.message = err.error.message;
+		}
+
+		if ($fs.existsSync(errFile)) {
+			if (err.message != null)
+				Log.warning("Error while serving " + request.url + "; Client " + this.getClientIP(request) + "; "
+					+ err.message, Log.LogTypes.Http);
+
+			this.staticFileResolver(errFile, (error, fileStream, mime, size) => {
+				if (error) {
+					Log.error("Applicaton.displayError(): " + error.message);
+					this.displayError(request, response, {status: 404, message: "File '" + errFile + "' not found."});
+					return;
+				}
+
+				response.writeHead(err.status, {"Content-Type": "text/html", "Content-Length": size});
+				fileStream.pipe(response);
+			});
+		} else {
+			try {
+				this.plainResponse(response, err.status, "Status code " + err.status + "\nWe're sorry but some error occurs.");
+			} catch (ex) {
+				Log.error(ex.message, Log.LogTypes.Std);
+			}
+
+			if (err.message != null)
+				Log.warning("Error while serving " + request.url + "; Error file doesn't exists; " + err.message,
+					Log.LogTypes.Http);
+		}
+	}
+
+	//</editor-fold>
 
 	//</editor-fold
 }

@@ -124,20 +124,46 @@ var Jumbo = {
 (function() {
 	var config = require(Jumbo.CONFIG_PATH);
 
-	if (config.protocol && config.protocol.hasOwnProperty("protocol")
-		&& config.protocol.hasOwnProperty("privateKey") && config.protocol.hasOwnProperty("certificate")
-		&& config.clustering && config.clustering.hasOwnProperty("numberOfWorkers")
-		&& config.cache && config.cache.hasOwnProperty("enabled") && config.cache.hasOwnProperty("storage")
-		&& config.log && config.log.hasOwnProperty("enabled") && config.log.hasOwnProperty("level")
+	if (
+		config.protocol
+		&& config.protocol.hasOwnProperty("protocol")
+		&& config.protocol.hasOwnProperty("privateKey")
+		&& config.protocol.hasOwnProperty("certificate")
+		&& config.protocol.hasOwnProperty("pfx")
+		&& config.protocol.hasOwnProperty("passphrase")
+
+		&& config.clustering
+		&& config.clustering.hasOwnProperty("numberOfWorkers")
+
+		&& config.cache
+		&& config.cache.hasOwnProperty("enabled")
+		// && config.cache.hasOwnProperty("storage")
+		&& config.cache.hasOwnProperty("memoryCacheSizeLimit")
+
+		&& config.session
+		&& config.session.hasOwnProperty("sessionsCookieName")
+		&& config.session.hasOwnProperty("sessionLifetime")
+		&& config.session.hasOwnProperty("memorySizeLimit")
+		&& config.session.hasOwnProperty("justInMemory")
+
+		&& config.log
+		&& config.log.hasOwnProperty("enabled")
+		&& config.log.hasOwnProperty("level")
+
 		&& config.hasOwnProperty("doTestsAfterRun")
 		&& config.hasOwnProperty("maxRequestPerSecond")
-		&& config.hasOwnProperty("maxPostDataSize") && config.DOSPrevention
-		&& config.DOSPrevention.hasOwnProperty("enabled") && config.DOSPrevention.hasOwnProperty("blockTime")
+		&& config.hasOwnProperty("maxPostDataSize")
+		&& config.hasOwnProperty("deployment")
+		&& config.hasOwnProperty("debugMode")
+
+		&& config.DOSPrevention
+		&& config.DOSPrevention.hasOwnProperty("enabled")
+		&& config.DOSPrevention.hasOwnProperty("blockTime")
 		&& config.DOSPrevention.hasOwnProperty("maxRequestPerIP"))
 	{
 		Jumbo.Config = require("./utils/object").getReadonlyVariant(config);
 	} else {
-		console.log("Config file is corrupted, some required items missing.");
+		console.log("[ERROR] Config file is corrupted, some required items missing.");
 	}
 })();
 
@@ -225,6 +251,24 @@ if ($cluster.isMaster) {
 				}
 			}
 		}
+	});
+
+	// Delete cached files
+	$fs.readdir(Jumbo.CACHE_DIR, (err, files) => {
+		var i = 0;
+
+		for (var fileName of files) {
+			if (fileName.slice(-9) == ".tplcache") {
+				let file = $path.join(Jumbo.CACHE_DIR, fileName);
+
+				// remove file
+				$fs.unlink(file, (err) => { });
+
+				i++;
+			}
+		}
+
+		Jumbo.Logging.Log.line(`${i} cached template files deleted`);
 	});
 }
 

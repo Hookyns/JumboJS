@@ -8,6 +8,7 @@ https://gitter.im/JumboJS
 
 ## DOCS
 Watch docs [here](https://hookyns.github.io/JumboJS-docs/)
+
 Docs not completed yet.
 
 ## Main Features of JumboJS
@@ -24,5 +25,10 @@ Docs not completed yet.
 - sessions stored on disk and in memory for faster access,
 - integrated email sender (soon),
 - native async & await support,
-- high performance - 2 000 requests per second with one worker (2,33 GHz core),
+- high performance - 3 000 requests per second with one worker (2,33 GHz core),
 - low dependecy - just few packages from 3rd party, it means that everything is made right for JumboJS
+
+## Instalation
+Use [jumbo-developer](https://www.npmjs.com/package/jumbo-developer) package to create project! Project
+must have specific structure but this core does NOT create that structure. 
+You can create structure on your own (see docs) but you'll just waste time.
