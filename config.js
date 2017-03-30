@@ -25,7 +25,9 @@ var Configurations = {
 		/** @type {Configurations.LogLevels} */
 		Normal: 3,
 		/** @type {Configurations.LogLevels} */
-		Talkative: 4
+		Talkative: 4,
+		/** @type {Configurations.LogLevels} */
+		TalkativeCluster: 5
 	},
 
 	Deployment: {

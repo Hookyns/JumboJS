@@ -90,8 +90,8 @@ class Log {
 	 * @param {Jumbo.Logging.Log.LogTypes} [type] Log type
 	 * @param {Jumbo.Logging.Log.LogLevels} [level] Log level
 	 */
-	static error(message, type, level) {
-		Log.line("ERROR: " + message, type, level || Log.LogLevels.Error);
+	static error(message, type, level = Log.LogLevels.Error) {
+		Log.line("ERROR: " + message, type, level);
 	}
 
 	/**
@@ -100,8 +100,8 @@ class Log {
 	 * @param {Jumbo.Logging.Log.LogTypes} [type] Log type
 	 * @param {Jumbo.Logging.Log.LogLevels} [level] Log level
 	 */
-	static warning(message, type, level) {
-		Log.line("WARNING: " + message, type, level || Log.LogLevels.Warning);
+	static warning(message, type, level = Log.LogLevels.Warning) {
+		Log.line("WARNING: " + message, type, level);
 	}
 
 	/**
@@ -110,13 +110,12 @@ class Log {
 	 * @param {Jumbo.Logging.Log.LogTypes} [type] Log type
 	 * @param {Jumbo.Logging.Log.LogLevels} [level] Log level
 	 */
-	static line(message, type, level) {
+	static line(message, type, level = Log.LogLevels.Normal) {
 		if (!Jumbo.Config.log.enabled) {
 			return;
 		}
 
 		type = type || Log.LogTypes.Std || "std";
-		level = level || Log.LogLevels.Normal;
 
 		if (level <= Log.level) {
 			if ($cluster.isMaster) Log.logFunction(message, type);
