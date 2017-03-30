@@ -1,6 +1,6 @@
 {
   "name": "jumbo-core",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Modern fast enterprise level MVC framework for Node.js",
   "author": {
     "name": "Roman Jámbor",
