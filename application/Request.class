@@ -203,6 +203,7 @@ class Request {
 	 */
 	redirect(controllerName, actionName, slashParams, queryParams, protocol) {
 		this.header["Location"] = this.locator.generateUrl(controllerName, actionName, slashParams, queryParams, null, protocol);
+		this.header["Content-Length"] = 0;
 		this.response.writeHead(302, this.header);
 		this.response.end();
 	}
@@ -218,6 +219,7 @@ class Request {
 	 */
 	subAppRedirect(subAppName, controllerName, actionName, slashParams, queryParams, protocol) {
 		this.header["Location"] = this.locator.generateUrl(controllerName, actionName, slashParams, queryParams, subAppName, protocol);
+		this.header["Content-Length"] = 0;
 		this.response.writeHead(302, this.header);
 		this.response.end();
 	}
@@ -231,6 +233,7 @@ class Request {
 	 */
 	locationRedirect(locationName, controllerName, actionName, params) {
 		this.header["Location"] = this.locator.generateLocationUrl(locationName, controllerName, actionName, params);
+		this.header["Content-Length"] = 0;
 		this.response.writeHead(302, this.header);
 		this.response.end();
 	}
@@ -241,6 +244,7 @@ class Request {
 	 */
 	redirectURL(url) {
 		this.header["Location"] = url;
+		this.header["Content-Length"] = 0;
 		this.response.writeHead(302, this.header);
 		this.response.end();
 	}

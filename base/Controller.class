@@ -8,6 +8,9 @@
 // Will be initiated when required
 var $fs, $path, fileExtensionToMimeMap;
 
+// Cross request storage
+var crossRequestDataStorage = {};
+
 /**
  * Core controller of framework
  * @memberOf Jumbo.Base
@@ -51,10 +54,16 @@ class Controller {
 		 * @protected
 		 */
 		this.callback = (() => {
-				Jumbo.Logging.Log.error("Controller's callback wasn't set");
-				this.request.response.writeHead(500, {"Content-Type": "text/plain"});
-				this.request.response.end("Status code 500\nWe are sorry, but some error (#001) occurs.");
-			});
+			Jumbo.Logging.Log.error("Controller's callback wasn't set");
+			this.request.response.writeHead(500, {"Content-Type": "text/plain"});
+			this.request.response.end("Status code 500\nWe are sorry, but some error (#001) occurs.");
+		});
+
+		/**
+		 * Data stored to next request
+		 * @type {Proxy}
+		 */
+		this.crossRequestData = null;
 	}
 
 	//</editor-fold>
@@ -74,20 +83,50 @@ class Controller {
 		this.request = request;
 		this.callback = callback;
 		this.scope = scope;
+
+		/**
+		 * Data stored to next request
+		 * @type {Proxy}
+		 */
+		this.crossRequestData = new Proxy({}, {
+			get: function (obj, key) {
+				if (!crossRequestDataStorage.hasOwnProperty(request.sessionId)) {
+					return;
+				}
+
+				return crossRequestDataStorage[request.sessionId][key];
+			},
+			set: function (obj, key, value) {
+				if (!crossRequestDataStorage.hasOwnProperty(request.sessionId)) {
+					crossRequestDataStorage[request.sessionId] = {};
+				}
+
+				return crossRequestDataStorage[request.sessionId][key] = value;
+			},
+			getOwnPropertyDescriptor: function (obj, key) {
+				if (!crossRequestDataStorage.hasOwnProperty(request.sessionId)) {
+					return undefined;
+				}
+
+				return Object.getOwnPropertyDescriptor(crossRequestDataStorage[request.sessionId], key);
+			}
+		});
+	}
+
+	/**
+	 * Clear all old cross request data which already lived cross two requests
+	 */
+	clearOldCrossRequestData() {
+		if (!crossRequestDataStorage.hasOwnProperty(this.request.sessionId)) {
+			return;
+		}
+
+		delete crossRequestDataStorage[this.request.sessionId];
 	}
 
 	//</editor-fold>
 
 	//<editor-fold desc="Public Methods">
-
-	// //noinspection JSMethodCanBeStatic
-	// /**
-	//  * This method is called before normal actions
-	//  * @param {Function} callback
-	//  */
-	// beforeActions(callback) {
-	// 	callback();
-	// }
 
 	/**
 	 * Check if current request is XHR request.
@@ -168,7 +207,8 @@ class Controller {
 
 		this.exited = true;
 		this.callback(null, rtrnData);
-		this.callback = function() { };
+		this.callback = function () {
+		};
 	}
 
 	/**
@@ -183,7 +223,8 @@ class Controller {
 			isSingle: true,
 			data: data || {}
 		});
-		this.callback = function() { };
+		this.callback = function () {
+		};
 	}
 
 	/**
@@ -196,17 +237,24 @@ class Controller {
 			isRaw: true, // TODO: Implement
 			data: {}
 		});
-		this.callback = function() { };
+		this.callback = function () {
+		};
 	}
 
 	/**
 	 * Add message to data for view, allow rendering messaes for clients.
 	 * Messages are hold in cookie for next request or to time of first reading.
 	 * @param {String} message
-	 * @param {String} messageType
+	 * @param {String} [messageType]
 	 */
 	addMessage(message, messageType) {
+		if (!crossRequestDataStorage.hasOwnProperty(this.request.sessionId)
+			|| !crossRequestDataStorage[this.request.sessionId].hasOwnProperty(Controller.clientMessagesId)) {
+			this.crossRequestData[Controller.clientMessagesId] = [];
+		}
 
+		crossRequestDataStorage[this.request.sessionId][Controller.clientMessagesId]
+		.push({message: message, type: messageType});
 	}
 
 	/**
@@ -313,5 +361,7 @@ class Controller {
 
 	//</editor-fold>
 }
+
+Controller.clientMessagesId = "_clientMessages";
 
 module.exports = Controller;

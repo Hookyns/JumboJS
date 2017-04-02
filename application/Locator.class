@@ -250,7 +250,7 @@ class Locator {
 		var baseUrl = "/";
 
 		if (host || protocol) {
-			baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host);
+			baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
 		}
 
 		var queryParamsLength = Object.keys(queryParams).length;
@@ -266,10 +266,10 @@ class Locator {
 		// Default action - return base URL just with controller
 		else if (action == Jumbo.Application.Application.defaultAction && noParams
 		) {
-			return baseUrl + "/" + controller.toLowerCase();
+			return baseUrl + controller.toLowerCase();
 		}
 		else {
-			var url = baseUrl + "/" + controller.toLowerCase() + this.delimiter + action.toLowerCase();
+			var url = baseUrl + controller.toLowerCase() + this.delimiter + action.toLowerCase();
 
 			if (!noParams) {
 				if (slashParams.length == 0) url += this.delimiter;

@@ -27,6 +27,7 @@ if (Jumbo.Config.protocol.protocol == $cfg.Protocols.Https) {
 	$http = require("http");
 }
 
+const clientMessageId = Jumbo.Base.Controller.clientMessagesId;
 var Log = Jumbo.Logging.Log;
 
 //</editor-fold>
@@ -1038,15 +1039,27 @@ class Application {
 				+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
 		}
 
-		this.prepareView(info, req);
+		// Client messages - add to data
+		Object.defineProperty(info.data, "clientMessages", {
+			get: function() {
+				if (Object.prototype.hasOwnProperty.call(cntrll.crossRequestData, clientMessageId)) {
+					return cntrll.crossRequestData[clientMessageId];
+				}
+
+				return {};
+			}
+		});
+
+		this.prepareView(info, req, cntrll);
 	}
 
 	/**
 	 * Prepare view rendering
 	 * @param info
 	 * @param {Jumbo.Application.Request} req
+	 * @param {Jumbo.Base.Controller} cntrl
 	 */
-	prepareView(info, req) {
+	prepareView(info, req, cntrl) {
 		var request = req.request;
 		var response = req.response;
 
@@ -1073,7 +1086,7 @@ class Application {
 		 * @param {String} compiledtemplate
 		 */
 		var render = (error, compiledtemplate, template) => {
-			this.renderView(error, compiledtemplate, req, tplCacheFile, template, info);
+			this.renderView(error, compiledtemplate, req, tplCacheFile, template, info, cntrl);
 		};
 
 		// Cached template doesn't exists or No-Cache received or caching is disabled
@@ -1141,8 +1154,9 @@ class Application {
 	 * @param {Jumbo.Application.Request} req
 	 * @param {String} tplCacheFile Cached template file name
 	 * @param {Jumplate} template
+	 * @param {Jumbo.Base.Controller} cntrl
 	 */
-	renderView(error, compiledtemplate, req, tplCacheFile, template, info) {
+	renderView(error, compiledtemplate, req, tplCacheFile, template, info, cntrl) {
 		var request = req.request;
 		var response = req.response;
 
@@ -1200,9 +1214,16 @@ class Application {
 		});
 
 		template.render(info.data, (err, output) => {
+			if (err) {
+				this.displayError(request, response, err);
+				return;
+			}
+
 			req.header["Content-Length"] = Buffer.byteLength(output, "utf-8");
 			response.writeHead(200, req.header);
 			response.end(output);
+
+			this.afterTemplateRender(cntrl);
 
 			// Check logging here because creating this log message contain a lot of logic so it
 			// can save resources if it'll not log after checking inside
@@ -1211,6 +1232,15 @@ class Application {
 					+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
 			}
 		});
+	}
+
+	/**
+	 * Called after template render
+	 * @param cntrl
+	 */
+	afterTemplateRender(cntrl) {
+		// Delete cross request data from controller
+		cntrl.clearOldCrossRequestData();
 	}
 
 	//</editor-fold>
@@ -1254,15 +1284,24 @@ class Application {
 	 * @private
 	 * @param request
 	 * @param response
-	 * @param {{status: Number, message: String}} err
+	 * @param {{status: Number, message: String, error: Error} | Error} err
 	 */
 	displayError(request, response, err) {
-		var errFile = $path.resolve(Jumbo.ERR_DIR, err.status + ".html");
-
 		// err.error - for showing errors in browser in the future
 		if (!err.message && err.error) {
 			err.message = err.error.message;
+
+			if (!err.status) {
+				err.status = 500;
+			}
+		} else if (err instanceof Error) {
+			err = {
+				message: err.stack,
+				status: 500
+			}
 		}
+
+		var errFile = $path.resolve(Jumbo.ERR_DIR, err.status + ".html");
 
 		if ($fs.existsSync(errFile)) {
 			if (err.message != null)
