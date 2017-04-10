@@ -1,6 +1,6 @@
 {
   "name": "jumbo-core",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Modern fast enterprise level MVC framework for Node.js",
   "keywords": [
     "jumbo",
