@@ -1,7 +1,7 @@
 # JumboJS
 Modern fast enterprise level MVC framework for Node.js
 
-!! Under development !!
+! Under development, but ready to use !
 
 Questions, troubles, feedback?
 https://gitter.im/JumboJS
@@ -23,6 +23,7 @@ Docs not completed yet.
 - a lot of things integrated but changeable thanks to Adapters,
 - code-first ORM with migrations (or MongoDB? or same wrap over all?) (soon),
 - sessions stored on disk and in memory for faster access,
+- model (DTO, forms) validators (soon),
 - integrated email sender (soon),
 - native async & await support,
 - high performance - 2 900 requests per second with one worker (2,33 GHz core),
