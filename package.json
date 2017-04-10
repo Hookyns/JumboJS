@@ -2,9 +2,10 @@
   "name": "jumbo-core",
   "version": "0.2.6",
   "description": "Modern fast enterprise level MVC framework for Node.js",
+  "keywords": ["jumbo", "jumbojs", "enterprise", "mvc", "framework", "web", "ria", "rest", "controller", "validator", "service", "di", "dependency", "injection", "ioc", "upload", "multipart", "cluster", "email", "es6", "es7", "session", "performance", "subdomain", "log", "norequire"],
   "author": {
     "name": "Roman Jámbor",
-    "email": "swat.hawkyns@seznam.cz"
+    "email": "hookcze@gmail.com"
   },
   "main": "loader.js",
   "dependencies": {

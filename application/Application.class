@@ -8,9 +8,9 @@
 //<editor-fold desc="Requires">
 
 const $fs = require("fs");
-const $less = require("less");
 const $path = require("path");
 const $cluster = require("cluster");
+const $less = require("less");
 const $formidable = require("formidable");
 
 const $clusterCmds = require("../cluster/cluster-messaging");
@@ -20,20 +20,30 @@ const $cfg = require("../config");
 
 var $https = null;
 var $http = null;
-
 if (Jumbo.Config.protocol.protocol == $cfg.Protocols.Https) {
 	$https = require("https");
 } else {
 	$http = require("http");
 }
 
-const clientMessageId = Jumbo.Base.Controller.clientMessagesId;
-var Log = Jumbo.Logging.Log;
-
 //</editor-fold>
 
+//<editor-fold desc="Declares">
+
+// Shorcuts
+const clientMessageId = Jumbo.Base.Controller.clientMessagesId;
+const Log = Jumbo.Logging.Log;
+const debugMode = Jumbo.Config.debugMode;
+
 // Number of seconds, time for collecting data, after that time are limits (amplified by this number) checked
-var checkIntervalTime = 5;
+const checkIntervalTime = 5;
+
+const tplCacheExtension = ".tplcache";
+
+// Initiated from runWhenReady - after application ready
+var defaultActionRegExp;
+
+//</editor-fold>
 
 /**
  * Class which contain HTTP server and do all the basic job around requests.
@@ -63,6 +73,10 @@ class Application {
 	/**
 	 * @callback banIpListener
 	 * @param {String} ip
+	 */
+
+	/**
+	 * @typedef {{render: function, preCompile: function, renderPreCompiled: function, extension: string, preCompilation: boolean}} TemplateAdapter
 	 */
 
 	//</editor-fold>
@@ -231,6 +245,12 @@ class Application {
 		 */
 		this.blockIpListener = null;
 
+		/**
+		 * Template adapter
+		 * @type {TemplateAdapter}
+		 */
+		this.templateAdapter = null;
+
 
 		// Array for actions creating sequence
 		var startActionSequence = [
@@ -249,7 +269,7 @@ class Application {
 		// Only for main process
 		if ($cluster.isMaster) {
 			// Remove createServer from sequence
-			if (!Jumbo.Config.debugMode) {
+			if (!debugMode) {
 				startActionSequence.shift();
 			}
 
@@ -305,6 +325,62 @@ class Application {
 	}
 
 	/**
+	 * Set your template adapter
+	 * @param {TemplateAdapter} adapter
+	 */
+	setTemplateAdapter(adapter) {
+		if (adapter.constructor != Object || !adapter.hasOwnProperty("extension")
+			|| !adapter.hasOwnProperty("preCompilation")
+		) {
+			console.error("Adapter you are trying to register in not Object!");
+			this.exit();
+		}
+
+		this.templateAdapter = adapter;
+	}
+
+	/**
+	 * Register function which will be executed in interval of given length
+	 * @param {Number} time Number of seconds
+	 * @param {Function} func Your function
+	 */
+	registerIntervalTask(time, func) {
+		if ($cluster.isMaster) {
+			setInterval(func, time * 1000);
+		}
+	}
+
+	/**
+	 * Register function which will be executed once per day in given time
+	 * @param {Number} hour Hour when you want to run your function
+	 * @param {Number} minute Minute in hour when you want to run your function
+	 * @param {Number} second Second in minute
+	 * @param {Function} func Your function
+	 */
+	registerDailyTask(hour, minute, second, func) {
+		throw new Error("Not implemented yet!");
+
+		// if ($cluster.isMaster) {
+		// 	var now = new Date();
+		// 	var hDiff = hour - now.getHours();
+		// 	var mDiff = minute - now.getMinutes();
+		// 	var sDiff = second - now.getSeconds();
+		// 	var timeToRun = 0;
+		//
+		// TODO: Implement
+		// 	if (hDiff < 0 && mDiff < 0 && sDiff < 0) {
+		//
+		// 	} else {
+		//
+		// 	}
+		//
+		// 	setTimeout(function() {
+		// 		setInterval(func, 1000 * 60 * 60 * 24);
+		// 	}, timeToExecute);
+		// }
+	}
+
+	/**
 	 * Register sign that you want to run application. Application is gonna be run when ready.
 	 * @param {Number} port
 	 * @param {Function} callback
@@ -316,10 +392,15 @@ class Application {
 			if (this.serverIsReady === true) {
 				clearInterval(interval);
 
+				if (!this.beforeRunWhenReadyCallback()) {
+					this.exit();
+					return;
+				}
+
 				if ($cluster.isMaster) {
 					console.timeEnd("Application Master load-time: ");
 
-					if (!Jumbo.Config.debugMode) {
+					if (!debugMode) {
 						callback();
 						return;
 					}
@@ -331,7 +412,7 @@ class Application {
 					this.serverIsRunning = true;
 
 					// Print by framework registered load-time timer
-					if (!Jumbo.Config.debugMode) {
+					if (!debugMode) {
 						console.timeEnd("Application Worker " + $cluster.worker.id + " load-time: ");
 
 						//Invoke worker ready
@@ -366,6 +447,19 @@ class Application {
 
 	//<editor-fold desc="Booting Methods">
 
+	beforeRunWhenReadyCallback() {
+		// Check template adapter
+		if (!this.templateAdapter) {
+			Log.error("No template adapter registered!");
+			return false;
+		}
+
+		// Create RegExp for checking default action URL
+		defaultActionRegExp = new RegExp("^/\w+" + Jumbo.Application.Locator.instance.delimiter + Application.defaultAction + "$");
+
+		return true;
+	}
+
 	/**
 	 * Initiate application clustering
 	 * @private
@@ -374,7 +468,7 @@ class Application {
 		if ($cluster.isMaster) {
 			// Fork this process - start clustering
 			if (Jumbo.Config.clustering && typeof Jumbo.Config.clustering.numberOfWorkers == "number"
-				&& !Jumbo.Config.debugMode) {
+				&& !debugMode) {
 
 				var cpuCount = Jumbo.Config.clustering.numberOfWorkers == 0
 					? require('os').cpus().length
@@ -606,8 +700,8 @@ class Application {
 
 	//<editor-fold desc="Request Process Methods">
 
-	// Server callback for http or https server
 	/**
+	 * Server callback for http or https server
 	 * Method accepting request from HTTP server (or called from Tests)
 	 * @private
 	 * @param {http.IncomingMessage} request
@@ -708,7 +802,7 @@ class Application {
 	processRequest(request, response, requestBeginTime) {
 		//noinspection JSAccessibilityCheck
 		Jumbo.Application.Request.buildRequest(request, response, this.locator, requestBeginTime, (err, req) => {
-			if (Jumbo.Config.debugMode) {
+			if (debugMode) {
 				console.log("[DEBUG] Application.processRequest request builded by Application.processRequest()", err);
 			}
 
@@ -743,12 +837,12 @@ class Application {
 			}
 
 			this.checkURL(req, () => {
-				if (Jumbo.Config.debugMode) {
+				if (debugMode) {
 					console.log("[DEBUG] Application.processRequest url checked by Application.checkURL()");
 				}
 
 				this.processPotentialPostAndContinue(req, (error, fields, files) => {
-					if (Jumbo.Config.debugMode) {
+					if (debugMode) {
 						console.log("[DEBUG] Request target suapp:", req.subApp, "controller:", req.controller, "action:", req.action);
 					}
 
@@ -821,9 +915,19 @@ class Application {
 	 * @param {Function} callback
 	 */
 	checkURL(req, callback) {
+		var url = req.request.url.toLowerCase();
+
+		if (url == "/") {
+			callback();
+			return;
+		}
+
+		var defAction = Jumbo.Application.Application.defaultAction.toLowerCase();
+		var cntrlUrl = "/" + Jumbo.Application.Application.defaultController.toLowerCase();
+		var delimiter = this.locator.delimiter;
+
 		// Index page
-		if (new RegExp("^/" + Jumbo.Application.Application.defaultController
-				+ "(" + this.locator.delimiter + Jumbo.Application.Application.defaultAction + ")?$", ["i"]).test(req.request.url)
+		if (url == cntrlUrl || url == cntrlUrl + delimiter || url == cntrlUrl + delimiter + defAction
 		) {
 			Log.line("Request for main page in long format -> redirect", Log.LogTypes.Http, Log.LogLevels.Talkative);
 			req.redirectURL("/");
@@ -831,10 +935,8 @@ class Application {
 		}
 
 		// Default action
-		if (new RegExp("^/[a-zA-Z0-9]+" + this.locator.delimiter + Jumbo.Application.Application.defaultAction + "$", ["i"])
-			.test(req.request.url)
-		) {
-			req.redirect(req.controller, Jumbo.Application.Application.defaultAction);
+		if (defaultActionRegExp.test(url)) {
+			req.redirect(req.controller, defAction);
 			return;
 		}
 
@@ -914,7 +1016,7 @@ class Application {
 	 * @param cntrll
 	 */
 	callAction(req, cntrll) {
-		if (Jumbo.Config.debugMode) {
+		if (debugMode) {
 			console.log("[DEBUG] Application.callAction() called");
 		}
 
@@ -961,7 +1063,7 @@ class Application {
 	 * @param {Jumbo.Application.Request} request
 	 */
 	async callControllerAction(controller, actionName, request) {
-		if (Jumbo.Config.debugMode) {
+		if (debugMode) {
 			console.log("[DEBUG] Application.callControllerAction() called");
 		}
 
@@ -983,12 +1085,16 @@ class Application {
 			}
 
 			try {
-				await controller[actionName].apply(controller, args);
-			} catch (error) {
-				try {
-					this.displayError(request.request, request.response, {status: 500, error: error});
-				} catch (err) {
+				let rtrnVal = controller[actionName].apply(controller, args);
+
+				// Maybe it'll be better check catch existance - somebody should return non native Promise
+				if (rtrnVal /* && !!rtrnVal.catch */ && rtrnVal instanceof Promise) {
+					rtrnVal.catch((error) => {
+						this.displayError(request.request, request.response, {status: 500, error: error});
+					});
 				}
+			} catch (error) {
+				this.displayError(request.request, request.response, {status: 500, error: error});
 			}
 		}
 	}
@@ -1000,7 +1106,7 @@ class Application {
 	 * @param {Jumbo.Base.Controller} cntrll
 	 */
 	controllerCallback(err, info, cntrll) {
-		if (Jumbo.Config.debugMode) {
+		if (debugMode) {
 			console.log("[DEBUG] Application.processRequest controllerCallback() called");
 		}
 
@@ -1020,10 +1126,7 @@ class Application {
 		}
 
 		if (err !== null) {
-			this.displayError(request, response, {
-				status: err.status,
-				message: err.message
-			});
+			this.displayError(request, response, err);
 			return;
 		}
 
@@ -1041,7 +1144,7 @@ class Application {
 
 		// Client messages - add to data
 		Object.defineProperty(info.data, "clientMessages", {
-			get: function() {
+			get: function () {
 				if (Object.prototype.hasOwnProperty.call(cntrll.crossRequestData, clientMessageId)) {
 					return cntrll.crossRequestData[clientMessageId];
 				}
@@ -1054,15 +1157,12 @@ class Application {
 	}
 
 	/**
-	 * Prepare view rendering
+	 * Create name for template cache file
 	 * @param info
-	 * @param {Jumbo.Application.Request} req
-	 * @param {Jumbo.Base.Controller} cntrl
+	 * @param req
+	 * @returns {String}
 	 */
-	prepareView(info, req, cntrl) {
-		var request = req.request;
-		var response = req.response;
-
+	getTemplateCacheName(info, req) {
 		var tplCacheFileName = (req.subApp || "Default") + "-";
 
 		if (info.view) {
@@ -1073,165 +1173,188 @@ class Application {
 			}
 		} else {
 			tplCacheFileName += req.controller + "-" + req.action;
+		}
+
+		tplCacheFileName += tplCacheExtension;
+
+		return $path.join(Jumbo.CACHE_DIR, tplCacheFileName);
+	}
+
+	/**
+	 * Prepare view rendering
+	 * @param info
+	 * @param {Jumbo.Application.Request} req
+	 * @param {Jumbo.Base.Controller} cntrl
+	 */
+	async prepareView(info, req, cntrl) {
+		if (!info.view) {
 			info.view = req.controller + "/" + req.action;
 		}
 
-		tplCacheFileName += ".tplcache";
+		var writeToCache = this.templateAdapter.preCompilation && Jumbo.Config.cache.enabled;
 
-		var tplCacheFile = $path.join(Jumbo.CACHE_DIR, tplCacheFileName);
+		// Do complete (compile and) render
+		if (req.noCache || !writeToCache) {
+			this.renderView(info, req, cntrl, writeToCache);
+			return;
+		}
 
-		/**
-		 * Render action's template
-		 * @param error
-		 * @param {String} compiledtemplate
-		 */
-		var render = (error, compiledtemplate, template) => {
-			this.renderView(error, compiledtemplate, req, tplCacheFile, template, info, cntrl);
-		};
+		// templateAdapter contain preCompilation, no noCache header in request and cache is enabled
 
-		// Cached template doesn't exists or No-Cache received or caching is disabled
-		if (req.noCache || !Jumbo.Config.cache.enabled) {
-			this.compileTemplate(info, req, render);
-		} else {
-			if (this.memoryCacheQueue.indexOf(tplCacheFile) != -1) {
-				let template = Jumplate.fromCache(this.memoryCache[tplCacheFile]);
-				render(null, null, template);
-			} else {
-				$fs.readFile(tplCacheFile, "utf-8", (err, content) => {
-					if (err) {
-						this.compileTemplate(info, req, render);
-						return;
-					}
+		var tplCacheFile = this.getTemplateCacheName(info, req);
 
-					let template = Jumplate.fromCache(content);
-					render(null, null, template);
-				});
+		// Cached in memory
+		if (this.memoryCacheQueue.indexOf(tplCacheFile) != -1) {
+			this.templateAdapter.renderPreCompiled(this.memoryCache[tplCacheFile], info.data, (err, result) => {
+				this.sendView(err, result, req, cntrl);
+			});
+			return;
+		}
+
+		if (debugMode) {
+			console.log("[DEBUG] Reading template from cache file");
+		}
+
+		$fs.readFile(tplCacheFile, "utf-8", (err, content) => {
+			if (err) {
+				// No cache exists - do complete (compile and) render
+				this.renderView(info, req, cntrl, true);
+				return;
 			}
+
+			this.templateAdapter.renderPreCompiled(content, info.data, (err, result) => {
+				this.sendView(err, result, req, cntrl);
+			});
+		});
+	}
+
+	/**
+	 * Send view to client
+	 * @param {Error} error
+	 * @param {String} output
+	 * @param {Jumbo.Application.Request} req
+	 * @param {Jumbo.Base.Controller} cntrl
+	 */
+	sendView(error, output, req, cntrl) {
+		var request = req.request;
+		var response = req.response;
+
+		if (error) {
+			this.displayError(request, response, error);
+			return;
+		}
+
+		req.header["Content-Length"] = Buffer.byteLength(output, "utf-8");
+		response.writeHead(200, req.header);
+		response.end(output);
+
+		this.afterTemplateRender(cntrl);
+
+		// Check logging here because creating this log message contain a lot of logic so it
+		// can save resources if it'll not log after checking inside
+		if (Jumbo.Config.log.enabled && Log.level >= Log.LogLevels.Normal) {
+			Log.line(`${request.method.toUpperCase()} ${req.noCache ? "no-cached " : ""}${request.url}`
+				+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
 		}
 	}
 
 	/**
-	 * Compile template
+	 * New complete (compile and) render of view
 	 * @param info
-	 * @param req
-	 * @param callback
+	 * @param {Jumbo.Application.Request} req
+	 * @param {Jumbo.Base.Controller} cntrl
 	 */
-	compileTemplate(info, req, callback) {
+	async renderView(info, req, cntrl, writeToCache = false) {
 		var appPath = Jumbo.APP_DIR;
 
 		if (req.subApp != null) {
 			appPath = $path.join(Jumbo.APP_DIR, "sub-apps", this.controllerFactory.subApp[req.subApp].dir);
 		}
 
-		var templatePath = $path.join(appPath, "templates", info.view + ".tpl");
-		var template;
+		var templatePath = $path.join(appPath, "templates", info.view + this.templateAdapter.extension);
+		var layoutPath = null;
 
 		if (info.isSingle) {
-			if (Jumbo.Config.debugMode) {
+			if (debugMode) {
 				console.log("[DEBUG] Render single template", templatePath);
 			}
-
-			template = new Jumplate(null, templatePath);
 		} else {
-			var layoutPath = $path.join(appPath, "templates", "layout.tpl");
+			layoutPath = $path.join(appPath, "templates", "layout" + this.templateAdapter.extension);
 
-			if (Jumbo.Config.debugMode) {
+			if (debugMode) {
 				console.log("[DEBUG] Render template", templatePath, "with layout", layoutPath);
 			}
-
-			template = new Jumplate(null, templatePath, null, layoutPath);
 		}
 
-		template.compile((error, compiledtemplate) => {
-			callback(error, compiledtemplate, template);
-		});
-	}
+		try {
+			var output;
 
-	/**
-	 * Render view
-	 * @param {Error} error
-	 * @param {String} compiledtemplate
-	 * @param {Jumbo.Application.Request} req
-	 * @param {String} tplCacheFile Cached template file name
-	 * @param {Jumplate} template
-	 * @param {Jumbo.Base.Controller} cntrl
-	 */
-	renderView(error, compiledtemplate, req, tplCacheFile, template, info, cntrl) {
-		var request = req.request;
-		var response = req.response;
-
-		if (error) {
-			this.displayError(request, response, {
-				status: 500,
-				message: error.message
-			});
-
-			return;
-		}
-
-		// New compilation, cache that
-		if (compiledtemplate && Jumbo.Config.cache.enabled) {
-			// Buffer.byteLength() should be used but .length on string is faster
-			// and diff in size shouldn't be big. Maybe if template will be full of >= 2B unicode characters
-			// then should be difference big (2x bigger or a little bit more)
-			//
-			// Buffer.byteLength() is 30 times slower
-
-			// Maybe logic of storing templates should be changed. Now last requested template is added to memory,
-			// but it should be better to track number of request for which template and keep the most
-			// requested templates
-
-			// If stored -> remove
-			if (this.memoryCache[tplCacheFile]) {
-				this.memoryCacheSize -= this.memoryCache[tplCacheFile].length; // <- Buffer.byteLength
-				delete this.memoryCache[tplCacheFile];
-			}
-
-			let size = compiledtemplate.length; // <- Buffer.byteLength
-
-			// If file can be saved to memory cache (fit limit)
-			if (size < Jumbo.Config.cache.memoryCacheSizeLimit) {
-				// clear old templates from memory cache and allow new template to save
-				while (this.memoryCacheSize + size > Jumbo.Config.cache.memoryCacheSizeLimit) {
-					let item = this.memoryCacheQueue.shift();
-					this.memoryCacheSize -= this.memoryCache[item].length; // <- Buffer.byteLength
-					delete this.memoryCache[item];
+			// templateAdapter has preCompilation and cache is enabled => preCompile template and save it to cache
+			if (writeToCache) {
+				if (debugMode) {
+					console.log("[DEBUG] Precompiling template");
 				}
 
-				this.memoryCache[tplCacheFile] = compiledtemplate;
-				this.memoryCacheSize += size;
-				this.memoryCacheQueue.push(tplCacheFile);
-			}
+				this.templateAdapter.preCompile(templatePath, layoutPath, (err, compiledtemplate) => {
+					if (err) {
+						this.displayError(req.request, req.response, err);
+						return;
+					}
 
-			$fs.writeFile(tplCacheFile, compiledtemplate, () => {
-			});
+					var tplCacheFile = this.getTemplateCacheName(info, req);
+
+					// Buffer.byteLength() should be used but .length on string is faster
+					// and diff in size shouldn't be big. Maybe if template will be full of >= 2B unicode characters
+					// then should be difference big (2x bigger or a little bit more)
+					//
+					// Buffer.byteLength() is 30 times slower
+
+					// Maybe logic of storing templates should be changed. Now last requested template is added to memory,
+					// but it should be better to track number of request for which template and keep the most
+					// requested templates
+
+					// If stored -> remove
+					if (this.memoryCache[tplCacheFile]) {
+						this.memoryCacheSize -= this.memoryCache[tplCacheFile].length; // <- Buffer.byteLength
+						delete this.memoryCache[tplCacheFile];
+					}
+
+					let size = compiledtemplate.length; // <- Buffer.byteLength
+
+					// If file can be saved to memory cache (fit limit)
+					if (size < Jumbo.Config.cache.memoryCacheSizeLimit) {
+						// clear old templates from memory cache and allow new template to save
+						while (this.memoryCacheSize + size > Jumbo.Config.cache.memoryCacheSizeLimit) {
+							let item = this.memoryCacheQueue.shift();
+							this.memoryCacheSize -= this.memoryCache[item].length; // <- Buffer.byteLength
+							delete this.memoryCache[item];
+						}
+
+						this.memoryCache[tplCacheFile] = compiledtemplate;
+						this.memoryCacheSize += size;
+						this.memoryCacheQueue.push(tplCacheFile);
+					}
+
+					$fs.writeFile(tplCacheFile, compiledtemplate, () => {
+					});
+
+					this.templateAdapter.renderPreCompiled(compiledtemplate, info.data, (err, result) => {
+						this.sendView(err, result, req, cntrl);
+					});
+				});
+			} else {
+				if (debugMode) {
+					console.log("[DEBUG] Complete (compile and) render");
+				}
+
+				// Do complete (compile and) render
+				this.templateAdapter.render(templatePath, layoutPath, info.data, (err, result) => {
+					this.sendView(err, result, req, cntrl);
+				});
+			}
+		} catch (error) {
+			this.displayError(req.request, req.response, error);
 		}
-
-		// TODO: implementovat
-		// template.registerHelpers();
-		template.registerLocalizator((key) => {
-			console.log("Implementovat lokalizátor");
-		});
-
-		template.render(info.data, (err, output) => {
-			if (err) {
-				this.displayError(request, response, err);
-				return;
-			}
-
-			req.header["Content-Length"] = Buffer.byteLength(output, "utf-8");
-			response.writeHead(200, req.header);
-			response.end(output);
-
-			this.afterTemplateRender(cntrl);
-
-			// Check logging here because creating this log message contain a lot of logic so it
-			// can save resources if it'll not log after checking inside
-			if (Jumbo.Config.log.enabled && Log.level >= Log.LogLevels.Normal) {
-				Log.line(`${request.method.toUpperCase()} ${req.noCache ? "no-cached " : ""}${request.url}`
-					+ ` (${req.subApp || "default"} subapp)` + ` returned in ${new Date().getTime() - req.beginTime} ms`);
-			}
-		});
 	}
 
 	/**

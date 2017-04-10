@@ -189,6 +189,22 @@ class Controller {
 	}
 
 	/**
+	 * Add message to data for view, allow rendering messaes for clients.
+	 * Messages are hold in cookie for next request or to time of first reading.
+	 * @param {String} message
+	 * @param {String} [messageType]
+	 */
+	addMessage(message, messageType) {
+		if (!crossRequestDataStorage.hasOwnProperty(this.request.sessionId)
+			|| !crossRequestDataStorage[this.request.sessionId].hasOwnProperty(Controller.clientMessagesId)) {
+			this.crossRequestData[Controller.clientMessagesId] = [];
+		}
+
+		crossRequestDataStorage[this.request.sessionId][Controller.clientMessagesId]
+		.push({message: message, type: messageType});
+	}
+
+	/**
 	 * Ends request and return default or given view with given data
 	 * @param {String | Object} [viewOrData] Name of specific view or just data
 	 * if your wanted view is default (if match with action name)
@@ -229,6 +245,7 @@ class Controller {
 
 	/**
 	 * Return raw not rendered view
+	 * @param {String} [view]
 	 */
 	rawView(view = null) {
 		this.exited = true;
@@ -242,19 +259,16 @@ class Controller {
 	}
 
 	/**
-	 * Add message to data for view, allow rendering messaes for clients.
-	 * Messages are hold in cookie for next request or to time of first reading.
-	 * @param {String} message
-	 * @param {String} [messageType]
+	 * Return view or just data if request is Xhr
+	 * @param {String | Object} viewOrData
+	 * @param {Object} [data]
 	 */
-	addMessage(message, messageType) {
-		if (!crossRequestDataStorage.hasOwnProperty(this.request.sessionId)
-			|| !crossRequestDataStorage[this.request.sessionId].hasOwnProperty(Controller.clientMessagesId)) {
-			this.crossRequestData[Controller.clientMessagesId] = [];
+	autoView(viewOrData, data = null) {
+		if (this.isXhr()) {
+			return this.returnJson(data || viewOrData || {});
 		}
 
-		crossRequestDataStorage[this.request.sessionId][Controller.clientMessagesId]
-		.push({message: message, type: messageType});
+		this.view(viewOrData, data);
 	}
 
 	/**
@@ -294,7 +308,7 @@ class Controller {
 	 * Ends request with JSON result
 	 * @param {Object} jsonObj
 	 */
-	returnJSON(jsonObj) {
+	returnJson(jsonObj) {
 		this.exited = true;
 		this.returnData(JSON.stringify(jsonObj), "application/json");
 	}

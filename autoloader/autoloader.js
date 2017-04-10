@@ -64,21 +64,10 @@ function loadDir(dir) {
 							}) : false;
 
 							// // New file added - reload process
-							// if (!inNS || removed) {
-								$clusterCmds.invoke($clusterCmds.Commands.RestartWorker);
+							$clusterCmds.invoke($clusterCmds.Commands.RestartWorker);
 
-								Jumbo.Logging.Log.line(`File ${classPath} ${removed ? "removed" : (inNS ? "changed" : "added")} - reload`,
-									Jumbo.Logging.Log.LogTypes.Std, Jumbo.Logging.Log.LogLevels.Talkative);
-							// }
-							//
-							// // Just changed - clear require cache
-							// else {
-							// 	// If will file changed, it'll be deleted from require cache and loaded again after somebody call created namespace accessor
-							// 	Jumbo.Logging.Log.line("File " + classPath + " changed - clearing require cache",
-							// 		Jumbo.Logging.Log.LogTypes.Std, Jumbo.Logging.Log.LogLevels.Talkative);
-							//
-							// 	delete require.cache[file];
-							// }
+							Jumbo.Logging.Log.line(`File ${classPath} ${removed ? "removed" : (inNS ? "changed" : "added")} - reload`,
+								Jumbo.Logging.Log.LogTypes.Std, Jumbo.Logging.Log.LogLevels.Talkative);
 						}, 1000);
 					});
 				}

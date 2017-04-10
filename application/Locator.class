@@ -440,7 +440,7 @@ class Locator {
 		var location;
 
 		// Procedure which try if some registered location match
-		var tryToMatchProc = (url) => {
+		const tryToMatchProc = (url) => {
 
 			// Try to match
 			for (var i = 0; !matched && i < c; i++) {

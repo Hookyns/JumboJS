@@ -1,18 +1,79 @@
+const Jumplate = require("jumbo-template");
+
+//<editor-fold desc="Helpers">
+
+Jumplate.registerHelper("link", function (...args) {
+	return Jumbo.Application.Locator.prototype.generateUrl.apply(Jumbo.Application.Locator.instance, args);
+});
+
+Jumplate.registerBlockHelper("form", function (content) {
+	return '<form method="POST" action="#" enctype="multipart/form-data">' + content + '</form>';
+});
+
+Jumplate.registerLocalizator(function (key) {
+	console.log("Implement localizator!");
+	return key;
+});
+
+//</editor-fold>
+
 /**
  * Integrated template adapter for Jumplate
  */
 var TemplateAdapter = {
-	compile: async function compile(templatePath, layoutPath) {
 
+	render: function render(templatePath, layoutPath, data, callback) {
+		var template = new Jumplate(null, templatePath, null, layoutPath);
+		template.compile(function (err) {
+			if (err) {
+				callback(err);
+				return;
+			}
+
+			template.render(data, function (err, output) {
+				if (err) {
+					callback(err);
+					return;
+				}
+
+				callback(null, output);
+			});
+		});
 	},
 
-	render: async function render(compiledTemplate, data) {
+	preCompile: function preCompile(templatePath, layoutPath, callback) {
+		var template = new Jumplate(null, templatePath, null, layoutPath);
+		template.compile(function (err, preCompiledTemplate) {
+			if (err) {
+				callback(err);
+				return;
+			}
 
+			callback(null, preCompiledTemplate);
+		});
 	},
 
-	compileAndRender: async function compileAndRender(templatePath, layoutPath, data) {
+	renderPreCompiled: function renderPreCompiled(compiledTemplate, data, callback) {
+		var template = Jumplate.fromCache(compiledTemplate);
+		template.render(data, function (err, output) {
+			if (err) {
+				callback(err);
+				return;
+			}
 
+			callback(null, output);
+		});
 	},
+
+	/**
+	 * Extension of template files
+	 */
+	extension: ".tpl",
+
+	/**
+	 * You implement preCompile and renderPreCompiled methods
+	 */
+	preCompilation: true
 };
 
 module.exports = TemplateAdapter;
