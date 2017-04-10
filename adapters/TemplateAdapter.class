@@ -19,6 +19,7 @@ Jumplate.registerLocalizator(function (key) {
 
 /**
  * Integrated template adapter for Jumplate
+ * @memberOf Jumbo.Adapters
  */
 var TemplateAdapter = {
 

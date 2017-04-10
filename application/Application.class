@@ -447,11 +447,15 @@ class Application {
 
 	//<editor-fold desc="Booting Methods">
 
+	/**
+	 * This methods is called before whenReadyCallback
+	 * This method check some settings before run
+	 * @returns {boolean}
+	 */
 	beforeRunWhenReadyCallback() {
 		// Check template adapter
 		if (!this.templateAdapter) {
-			Log.error("No template adapter registered!");
-			return false;
+			this.setTemplateAdapter(Jumbo.Adapters.TemplateAdapter);
 		}
 
 		// Create RegExp for checking default action URL
