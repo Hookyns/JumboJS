@@ -18,6 +18,7 @@ Docs not completed yet.
 - integrated Inversion of Control - constructor Dependency Injection,
 - code can be changed while runtime,
 - unexpected errors are catched and logged, then process is restarted,
+- client-side micro framework creating SPA without any client-side programming (soon),
 - fully configurable logging with log levels,
 - subdomains! More "modules" in one application accessible via subdomains,
 - a lot of things integrated but changeable thanks to Adapters,
