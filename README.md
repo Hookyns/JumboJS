@@ -27,8 +27,9 @@ Docs not completed yet.
 - model (DTO, forms) validators (soon),
 - integrated email sender (soon),
 - native async & await support,
-- high performance - 2 900 requests per second with one worker (2,33 GHz core),
-- low dependecy - just few packages from 3rd party, it means that everything is made right for JumboJS
+- high performance - 3 000 requests per second with one worker (2,33 GHz core),
+- low dependecy - just few packages from 3rd party, it means that everything is made right for JumboJS,
+- integrated globalization.
 
 ## Instalation
 Use [jumbo-developer](https://www.npmjs.com/package/jumbo-developer) package to create project! Project

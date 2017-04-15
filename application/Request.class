@@ -6,13 +6,21 @@
 "use strict";
 
 const $crypt = require("../utils/crypt");
-var Log = Jumbo.Logging.Log;
+
+const Log = Jumbo.Logging.Log;
+const controllerFactory = Jumbo.Application.ControllerFactory.instance;
+const locator = Jumbo.Application.Locator.instance;
+
+const defaultAction = Jumbo.Application.Locator.defaultAction;
+const defaultController = Jumbo.Application.Locator.defaultController;
+const defaultLanguage = Jumbo.Config.globalization.defaultLanguage;
 
 /**
  * Class encapsulating basic http.Request and http.Response
  * @memberOf Jumbo.Application
  */
 class Request {
+
 	//<editor-fold desc="Virtual Callbacks">
 
 	/**
@@ -28,10 +36,9 @@ class Request {
 	/**
 	 * @param request
 	 * @param response
-	 * @param locator
 	 * @constructs
 	 */
-	constructor(request, response, locator) {
+	constructor(request, response) {
 		/**
 		 * Original request from http server
 		 * @type IncomingMessage
@@ -47,13 +54,6 @@ class Request {
 
 
 		/**
-		 * Locator instance
-		 * @type {Jumbo.Application.Locator}
-		 */
-		this.locator = locator;
-
-
-		/**
 		 * Subapp on which request points
 		 * @type {String}
 		 */
@@ -66,12 +66,24 @@ class Request {
 		 */
 		this.controller = null;
 
+		/**
+		 * Controller full name
+		 * @type {String}
+		 */
+		this.controllerFullName = null;
+
 
 		/**
 		 * Action on which request points
 		 * @type {String}
 		 */
 		this.action = null;
+
+		/**
+		 * Action full name
+		 * @type {String}
+		 */
+		this.actionFullName = null;
 
 
 		/**
@@ -107,6 +119,13 @@ class Request {
 		 * @type {null}
 		 */
 		this.sessionId = null;
+
+
+		/**
+		 * Reuested language
+		 * @type {String}
+		 */
+		this.language = null;
 
 
 		/**
@@ -199,12 +218,15 @@ class Request {
 	 * @param {String} actionName Action name
 	 * @param {Array} [slashParams]
 	 * @param {Object} [queryParams]
+	 * @param {String} [lang]
 	 * @param {String} [protocol] http | https
+	 * @param {Number} [code]
 	 */
-	redirect(controllerName, actionName, slashParams, queryParams, protocol) {
-		this.header["Location"] = this.locator.generateUrl(controllerName, actionName, slashParams, queryParams, null, protocol);
+	redirect(controllerName, actionName, slashParams, queryParams, lang = null, protocol, code = 302) {
+		this.header["Location"] = locator.generateUrl(controllerName, actionName, slashParams, queryParams, null,
+			lang || this.language, protocol);
 		this.header["Content-Length"] = 0;
-		this.response.writeHead(302, this.header);
+		this.response.writeHead(code, this.header);
 		this.response.end();
 	}
 
@@ -215,12 +237,15 @@ class Request {
 	 * @param {String} actionName Action name
 	 * @param {Array} [slashParams]
 	 * @param {Object} [queryParams]
+	 * @param {String} [lang]
 	 * @param {String} [protocol] http | https
+	 * @param {Number} [code]
 	 */
-	subAppRedirect(subAppName, controllerName, actionName, slashParams, queryParams, protocol) {
-		this.header["Location"] = this.locator.generateUrl(controllerName, actionName, slashParams, queryParams, subAppName, protocol);
+	subAppRedirect(subAppName, controllerName, actionName, slashParams, queryParams, lang = null, protocol, code = 302) {
+		this.header["Location"] = locator.generateUrl(controllerName, actionName, slashParams, queryParams, subAppName,
+			lang || this.language, protocol);
 		this.header["Content-Length"] = 0;
-		this.response.writeHead(302, this.header);
+		this.response.writeHead(code, this.header);
 		this.response.end();
 	}
 
@@ -230,11 +255,14 @@ class Request {
 	 * @param {String} [controllerName]
 	 * @param {String} [actionName]
 	 * @param {Object} [params]
+	 * @param {String} [lang]
+	 * @param {Number} [code]
 	 */
-	locationRedirect(locationName, controllerName, actionName, params) {
-		this.header["Location"] = this.locator.generateLocationUrl(locationName, controllerName, actionName, params);
+	locationRedirect(locationName, controllerName, actionName, params, lang = null, code = 302) {
+		this.header["Location"] = locator.generateLocationUrl(locationName, controllerName, actionName, params,
+			lang || this.language);
 		this.header["Content-Length"] = 0;
-		this.response.writeHead(302, this.header);
+		this.response.writeHead(code, this.header);
 		this.response.end();
 	}
 
@@ -242,10 +270,10 @@ class Request {
 	 * Redirect to given URL
 	 * @param {String} url
 	 */
-	redirectURL(url) {
+	redirectURL(url, code = 302) {
 		this.header["Location"] = url;
 		this.header["Content-Length"] = 0;
-		this.response.writeHead(302, this.header);
+		this.response.writeHead(code, this.header);
 		this.response.end();
 	}
 
@@ -265,26 +293,22 @@ class Request {
 	 * @private
 	 * @param {http.IncomingMessage} request
 	 * @param {http.ServerResponse} response
-	 * @param {Jumbo.Application.Locator} locator
 	 * @param {buildRequestCallback} callback
 	 */
-	static buildRequest(request, response, locator, requestBeginTime, callback) {
+	static buildRequest(request, response, requestBeginTime, callback) {
 		var match;
-
-		var controllerFactory = Application.controllerFactory;
 
 		if ((match = locator.parseUrl(request)) !== null) {
 			var existsError;
 
 			// Check existance of requested controller and action in given subapp
 			if ((existsError = controllerFactory.controllerAndActionExist(match.controller,
-						match.action, match.subApp)) instanceof Error)
-			{
+					match.action, match.subApp)) instanceof Error) {
 				callback(new Jumbo.Exceptions.ControllerOrActionDoesntExistsException(existsError.message), null);
 				return;
 			}
 
-			var req = new Request(request, response, locator);
+			var req = new Request(request, response);
 			var action, controller;
 
 			// Get controller and action names
@@ -301,6 +325,40 @@ class Request {
 
 			// Write request begin time
 			req.beginTime = requestBeginTime;
+
+			// Write language
+			req.language = match.language;
+
+			var url = req.request.url;
+
+			// Check long format URLs
+			if (match.shouldCheck) {
+				// If default language in URL -> redirect to URL without language
+				if (url.slice(1, 3) == defaultLanguage) {
+					req.redirectURL("/" + url.slice(4), 301);
+					return;
+				}
+
+				if (!match.hasParams && req.action == defaultAction) {
+					if (req.controller == defaultController) {
+						if (match.language == defaultLanguage/* && url != "/" -> checked in Application class before this */) {
+							req.redirectURL("/", 301);
+							return;
+						} else if (url.length > 4) { // url > /en/
+							req.redirectURL("/" + match.language, 301);
+							return;
+						}
+					} else if (match.actionInUrl) {
+						if (match.language == defaultLanguage) {
+							req.redirectURL("/" + match.controller, 301);
+							return;
+						}
+
+						req.redirectURL("/" + match.language + locator.delimiter + match.controller, 301);
+						return;
+					}
+				}
+			}
 
 			// Give unique ID to client
 			if (!(req.sessionId = req.getCookie(Jumbo.Config.session.sessionsCookieName))) {
@@ -329,6 +387,8 @@ class Request {
 		this.controller = controller.slice(0, -10); // Remove Controller from name
 		this.action = action.charAt(6).toLowerCase() + action.slice(7); // Remove action from name and make first letter lower case
 		this.params = params;
+		this.actionFullName = action;
+		this.controllerFullName = controller;
 	}
 
 	//</editor-fold>

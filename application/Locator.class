@@ -11,6 +11,9 @@ const $qs = require("querystring");
 const $url = require("url");
 const $object = require("../utils/object");
 
+const defaultLanguage = Jumbo.Config.globalization.defaultLanguage;
+const globalizationEnabled = Jumbo.Config.globalization.enabled;
+
 var instance = null;
 
 /**
@@ -33,6 +36,22 @@ class Locator {
 			StringId: /[a-zA-Z_]/,
 			Number: /[0-9]*(?:\.[0-9]+)?/
 		};
+	}
+
+	/**
+	 * Default controller name
+	 * @type {string}
+	 */
+	static get defaultController() {
+		return "Home";
+	}
+
+	/**
+	 * Default action name
+	 * @type {string}
+	 */
+	static get defaultAction() {
+		return "index"
 	}
 
 	/**
@@ -93,6 +112,13 @@ class Locator {
 		 * @type {string}
 		 */
 		this.delimiter = "/";
+
+		/**
+		 * List of static URLs and their aliases
+		 * @private
+		 * @type {Array}
+		 */
+		this.urlAliases = {};
 	}
 
 	//</editor-fold>
@@ -100,7 +126,7 @@ class Locator {
 	//<editor-fold desc="Public Methods">
 
 	/**
-	 * Set server hostname - used for detection of sub-apps and link creation
+	 * Set server hostname - used for subapp link creation
 	 * @param {String} host
 	 */
 	setHost(host) {
@@ -155,6 +181,11 @@ class Locator {
 
 		options = options || {};
 
+		// Add language if enabled
+		if (globalizationEnabled) {
+			location = "[$globlanguage" + "/]" + location;
+		}
+
 		var loc = {
 			location: location,
 			locationMatcher: null,
@@ -192,11 +223,15 @@ class Locator {
 		}
 
 		// Create regex for this location
+
+		// Mark start
+		location = "^" + location;
+
 		// proc optional part
 		location = location.replace(/\[/g, "(?:");
 		location = location.replace(/]/g, ")?");
 
-		// Replace location delmiter ith registered delimiter
+		// Replace location delmiter with registered delimiter
 		if (this.delimiter != "/") {
 			var delimiter = this.delimiter;
 
@@ -208,8 +243,12 @@ class Locator {
 		}
 
 		// proc variables
-		loc.locationMatcher = "^" + location.replace(/\$([a-z][a-zA-Z]*)/g, (_, varName) => {
+		loc.locationMatcher = location.replace(/\$([a-z][a-zA-Z]*)/g, (_, varName) => {
 			loc.variables.push(varName);
+
+			if (varName == "globlanguage") {
+				return "([a-z]{2})";
+			}
 
 			if (varName == "controller") {
 				return "([a-zA-Z]{3,})";
@@ -238,33 +277,46 @@ class Locator {
 	 * @param {Array} [lashParams]
 	 * @param {Object} [queryParams]
 	 * @param {String} [subApp]
+	 * @param {String} [lang]
 	 * @param {String} [protocol]
 	 * @param {String} [host]
 	 * @returns {string}
 	 */
-	generateUrl(controller, action, slashParams = [], queryParams = {}, subApp = null, protocol = null, host = null) {
+	generateUrl(controller, action, slashParams = null, queryParams = null, subApp = null, lang = null, protocol = null, host = null) {
 		if (!Application.controllerFactory.controllerAndActionExist(controller, action, subApp)) {
 			throw new Error("Controller or it's action doesn't exists.");
 		}
 
 		var baseUrl = "/";
 
-		if (host || protocol) {
+		if (host || protocol || subApp) {
 			baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
+		}
+
+		if (lang && lang != defaultLanguage && globalizationEnabled) {
+			baseUrl += lang + this.delimiter;
+		}
+
+		if (!slashParams) {
+			slashParams = [];
+		}
+
+		if (!queryParams) {
+			queryParams = {};
 		}
 
 		var queryParamsLength = Object.keys(queryParams).length;
 		var noParams = slashParams.length == 0 && queryParamsLength == 0;
 
 		// Base controller and action - return base URL
-		if (controller == Jumbo.Application.Application.defaultController
-			&& action == Jumbo.Application.Application.defaultAction && noParams
+		if (controller == defaultController
+			&& action == defaultAction && noParams
 		) {
 			return baseUrl;
 		}
 
 		// Default action - return base URL just with controller
-		else if (action == Jumbo.Application.Application.defaultAction && noParams
+		else if (action == defaultAction && noParams
 		) {
 			return baseUrl + controller.toLowerCase();
 		}
@@ -306,9 +358,10 @@ class Locator {
 	 * @param {String} [controller]
 	 * @param {String} [action]
 	 * @param {Object} [params]
+	 * @param {String} [lang]
 	 * @returns {String}
 	 */
-	generateLocationUrl(locationName, controller = null, action = null, params = {}) {
+	generateLocationUrl(locationName, controller = null, action = null, params = {}, lang = null) {
 		if (!this.locations[locationName]) {
 			throw new Error("Location with this name doesn't exists.");
 		}
@@ -331,6 +384,13 @@ class Locator {
 		var loc = location.location.replace(/\[|\]/g, "");
 
 		return "/" + loc.replace(/(\/)?\$([a-z][a-zA-Z]*)/g, (_, delimiter, varName) => {
+			if (varName == "globlanguage") {
+				if (!lang) {
+					return this.delimiter + Jumbo.Config.globalization.defaultLanguage;
+				}
+				return this.delimiter + action.toLowerCase();
+			}
+
 			if (varName == "controller") {
 				if (!controller) {
 					throw new Error("This location require controller but you don't pass any in parameters.");
@@ -368,7 +428,7 @@ class Locator {
 		var host = request.headers.host.replace(/:[0-9]+$/, ""); //request.url.replace(/http(s)?:\/\//, "");
 
 		// Test if host is IP - no subapp
-		if (host.match(/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/)) {
+		if ((/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/).test(host)) {
 			return null;
 		}
 
@@ -419,13 +479,22 @@ class Locator {
 		// Parse URL to parts
 		var parse = $url.parse(url);
 
+		var emptyPath = parse.pathname == "/";
+
 		// If just slash
-		if (parse.pathname == "/") {
+		if (emptyPath || parse.pathname.length == 3) { // / or eg. /en - controller must have at least 3 characters
+			// should be validate with regex but it's gonna be taken as language so jung language will have bad format
+			// user catch that and show error, that given language doesn't exists
+			var lang = parse.pathname.slice(1) || defaultLanguage;
 			return {
 				subApp: subApp,
-				controller: Jumbo.Application.Application.defaultController,
-				action: Jumbo.Application.Application.defaultAction,
-				params: $qs.parse(parse.query)
+				controller: defaultController,
+				action: defaultAction,
+				params: $qs.parse(parse.query),
+				language: lang,
+				shouldCheck: !emptyPath,
+				hasParams: false,
+				actionInUrl: false
 			};
 		}
 
@@ -465,17 +534,22 @@ class Locator {
 			}
 		};
 
+		var shouldCheck = true;
+
 		// Try to match current url path
 		tryToMatchProc(url);
 
 		// If not matched before, try to match with added action
-		if (!matched && url.match(/^\/[a-z]+$/)) {// If only /controller
-			var tmpUrl = url + this.delimiter + Jumbo.Application.Application.defaultAction;
+		if (!matched && (/^\/[a-z]+$/).test(url)) {// If only /controller
+			var tmpUrl = url + this.delimiter + defaultAction;
 			tryToMatchProc(tmpUrl);
+			shouldCheck = false;
 		}
 
 		if (matched) {
 			var location = this.locations[locIndex];
+
+			var matchedAction = match[location.variables.indexOf("action") + 1];
 
 			var res = {
 				subApp: subApp,
@@ -484,18 +558,26 @@ class Locator {
 					: match[location.variables.indexOf("controller") + 1],
 				action: location.targetedAction
 					? location.action
-					: (match[location.variables.indexOf("action") + 1]
-				|| Jumbo.Application.Application.defaultAction),
+					: (matchedAction || defaultAction),
 				params: $object.clone(location.params),
-				location: location
+				location: location,
+				language: match[1] || defaultLanguage,
+				shouldCheck: true,
+				hasParams: false,
+				actionInUrl: !!matchedAction
 			};
 
 			c = location.variables.length;
 
 			// Slash params
 			for (var i = 0; i < c; i++) {
-				if (location.variables[i] != "controller" && location.variables[i] != "action") {
+				if (location.variables[i] != "controller" && location.variables[i] != "action"
+					&& location.variables[i] != "globlanguage"
+				) {
 					res.params[location.variables[i]] = match[i + 1];
+					if (!res.hasParams && match[i + 1] != undefined) {
+						res.hasParams = true;
+					}
 				}
 			}
 
@@ -506,15 +588,47 @@ class Locator {
 				res.params[qp] = queryParams[qp];
 			}
 
+			if (!res.hasParams && !!Object.keys(queryParams).length) {
+				res.hasParams = true;
+			}
+
 			return res;
 		}
 
 		return null;
 	}
 
+	/**
+	 * Create alias for some url. Eg. you have static file /public/robots.txt and you want to be under url /robots.txt
+	 * so then add url alias addUrlAlias("/public/robots.txt", "/robots.txt")
+	 * @param {String} url Target URL
+	 * @param {String} alias Alias for target URL
+	 */
+	addUrlAlias(url, alias) {
+		this.urlAliases[alias] = url;
+	}
+
+	//</editor-fold>
+
+	//<editor-fold desc="Private Methods">
+
+	/**
+	 * Return URL for alias if registered, otherwise null
+	 * @private
+	 * @param {String} alias
+	 * @returns {String | null}
+	 */
+	getUrlForAlias(alias) {
+		if (!this.urlAliases.hasOwnProperty(alias)) return null;
+		return this.urlAliases[alias];
+	}
+
 	//</editor-fold>
 }
 
 class LocatorActivator extends Locator { }
+
+const defaultController = Locator.defaultController;
+const defaultAction = Locator.defaultAction;
 
 module.exports = Locator;

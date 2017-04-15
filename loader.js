@@ -159,7 +159,11 @@ var Jumbo = {
 		&& config.DOSPrevention
 		&& config.DOSPrevention.hasOwnProperty("enabled")
 		&& config.DOSPrevention.hasOwnProperty("blockTime")
-		&& config.DOSPrevention.hasOwnProperty("maxRequestPerIP"))
+		&& config.DOSPrevention.hasOwnProperty("maxRequestPerIP")
+
+		&& config.globalization
+		&& config.globalization.hasOwnProperty("enabled")
+		&& config.globalization.hasOwnProperty("defaultLanguage"))
 	{
 		Jumbo.Config = require("./utils/object").getReadonlyVariant(config);
 	} else {

@@ -11,6 +11,8 @@ var $fs, $path, fileExtensionToMimeMap;
 // Cross request storage
 var crossRequestDataStorage = {};
 
+const locator = Jumbo.Application.Locator.instance;
+
 /**
  * Core controller of framework
  * @memberOf Jumbo.Base
@@ -145,10 +147,11 @@ class Controller {
 	 * @param {String} action Action name
 	 * @param {Array} [slashParams] Array of slash parameters
 	 * @param {Object} [queryParams] List of named parameters
+	 * @param {String} lang
 	 * @returns {string}
 	 */
-	link(controller, action, slashParams, queryParams) {
-		return Application.getLocator().generateUrl(controller, action, slashParams, queryParams);
+	link(controller, action, slashParams, queryParams, lang) {
+		return locator.generateUrl(controller, action, slashParams, queryParams, null, lang);
 	}
 
 	//noinspection JSMethodCanBeStatic
@@ -159,10 +162,11 @@ class Controller {
 	 * @param {String} action Action name
 	 * @param {Array} [slashParams] Array of slash parameters
 	 * @param {Object} [queryParams] List of named parameters
+	 * @param {String} lang
 	 * @returns {string}
 	 */
-	appLink(subApp, controller, action, slashParams, queryParams) {
-		return Application.getLocator().generateUrl(controller, action, slashParams, queryParams, subApp);
+	appLink(subApp, controller, action, slashParams, queryParams, lang) {
+		return locator.generateUrl(controller, action, slashParams, queryParams, subApp, lang);
 	}
 
 	//noinspection JSMethodCanBeStatic
@@ -175,7 +179,7 @@ class Controller {
 	 * @returns {String}
 	 */
 	locationLink(locationName, controller, action, params) {
-		return Application.getLocator().generateLocationUrl(locationName, controller, action, params);
+		return locator.generateLocationUrl(locationName, controller, action, params);
 	}
 
 	/**

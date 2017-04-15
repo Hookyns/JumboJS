@@ -40,9 +40,6 @@ const checkIntervalTime = 5;
 
 const tplCacheExtension = ".tplcache";
 
-// Initiated from runWhenReady - after application ready
-var defaultActionRegExp;
-
 //</editor-fold>
 
 /**
@@ -82,22 +79,6 @@ class Application {
 	//</editor-fold>
 
 	//<editor-fold desc="Static Properties">
-
-	/**
-	 * Default controller name
-	 * @type {string}
-	 */
-	static get defaultController() {
-		return "Home";
-	}
-
-	/**
-	 * Default action name
-	 * @type {string}
-	 */
-	static get defaultAction() {
-		return "index"
-	}
 
 	//</editor-fold>
 
@@ -458,8 +439,8 @@ class Application {
 			this.setTemplateAdapter(Jumbo.Adapters.TemplateAdapter);
 		}
 
-		// Create RegExp for checking default action URL
-		defaultActionRegExp = new RegExp("^/\w+" + Jumbo.Application.Locator.instance.delimiter + Application.defaultAction + "$");
+		// // Create RegExp for checking default action URL
+		// defaultActionRegExp = new RegExp("^/\w+" + Jumbo.Application.Locator.instance.delimiter + Application.defaultAction + "$");
 
 		return true;
 	}
@@ -770,6 +751,12 @@ class Application {
 			return;
 		}
 
+		var aliasOrigUrl;
+
+		if ((aliasOrigUrl = this.locator.getUrlForAlias(request.url)) != null) {
+			request.url = aliasOrigUrl;
+		}
+
 		// Check if request is requesting static file
 		if (request.method == "GET" && request.url.slice(0, 7) == "/public") {
 			var url = decodeURI(request.url);
@@ -805,7 +792,7 @@ class Application {
 	 */
 	processRequest(request, response, requestBeginTime) {
 		//noinspection JSAccessibilityCheck
-		Jumbo.Application.Request.buildRequest(request, response, this.locator, requestBeginTime, (err, req) => {
+		Jumbo.Application.Request.buildRequest(request, response, requestBeginTime, (err, req) => {
 			if (debugMode) {
 				console.log("[DEBUG] Application.processRequest request builded by Application.processRequest()", err);
 			}
@@ -840,111 +827,69 @@ class Application {
 				return;
 			}
 
-			this.checkURL(req, () => {
+			this.processPotentialPostAndContinue(req, (error, fields, files) => {
 				if (debugMode) {
-					console.log("[DEBUG] Application.processRequest url checked by Application.checkURL()");
+					console.log("[DEBUG] Request target suapp:", req.subApp, "controller:", req.controller, "action:", req.action);
 				}
 
-				this.processPotentialPostAndContinue(req, (error, fields, files) => {
-					if (debugMode) {
-						console.log("[DEBUG] Request target suapp:", req.subApp, "controller:", req.controller, "action:", req.action);
-					}
+				// If POST comes
+				if (fields || files) {
+					req.body = {
+						fields: fields,
+						files: files
+					};
+				}
 
-					// If POST comes
-					if (fields || files) {
-						req.body = {
-							fields: fields,
-							files: files
-						};
-					}
+				// Create DI Scope for controller
+				var scope = new Jumbo.Ioc.Scope();
 
-					// Create DI Scope for controller
-					var scope = new Jumbo.Ioc.Scope();
+				var cntrll;
 
-					var cntrll;
+				if (req.subApp !== null) {
+					cntrll = this.controllerFactory.createSubAppController(req.subApp, req.controller, scope);
+				} else {
+					cntrll = this.controllerFactory.createController(req.controller, scope);
+				}
 
-					if (req.subApp !== null) {
-						cntrll = this.controllerFactory.createSubAppController(req.subApp, req.controller, scope);
+				if (cntrll === null) {
+					this.displayError(request, response, {
+						status: 404,
+						message: "File not found"
+					});
+					return;
+				}
+
+				// Get user session ID from cookies
+				var userSessId = req.getCookie(Jumbo.Config.session.sessionsCookieName);
+
+				// Load sessions from memory
+				var session = this.sessions[userSessId];
+
+				// if session in not in this.sessions, try to load session from file
+				if (session == undefined) {
+					// If session is justInMemory, ignore saved session
+					if (Jumbo.Config.session.justInMemory === true) {
+						this.initController(req, cntrll, {}, scope);
 					} else {
-						cntrll = this.controllerFactory.createController(req.controller, scope);
-					}
+						$fs.readFile($path.join(Jumbo.SESSION_DIR, userSessId + ".session"), "utf-8", (err, sessJson) => {
+							var storedSession = {};
 
-					if (cntrll === null) {
-						this.displayError(request, response, {
-							status: 404,
-							message: "File not found"
-						});
-						return;
-					}
-
-					// Get user session ID from cookies
-					var userSessId = req.getCookie(Jumbo.Config.session.sessionsCookieName);
-
-					// Load sessions from memory
-					var session = this.sessions[userSessId];
-
-					// if session in not in this.sessions, try to load session from file
-					if (session == undefined) {
-						// If session is justInMemory, ignore saved session
-						if (Jumbo.Config.session.justInMemory === true) {
-							this.initController(req, cntrll, {}, scope);
-						} else {
-							$fs.readFile($path.join(Jumbo.SESSION_DIR, userSessId + ".session"), "utf-8", (err, sessJson) => {
-								var storedSession = {};
-
-								// Sessin not exists
-								if (!err) {
-									try {
-										storedSession = JSON.parse(sessJson);
-									} catch (e) {
-									}
+							// Sessin not exists
+							if (!err) {
+								try {
+									storedSession = JSON.parse(sessJson);
+								} catch (e) {
 								}
+							}
 
-								this.initController(req, cntrll, storedSession, scope);
-							});
-						}
-					} else {
-						this.initController(req, cntrll, session, scope);
+							this.initController(req, cntrll, storedSession, scope);
+						});
 					}
-				});
+				} else {
+					this.initController(req, cntrll, session, scope);
+				}
 			});
 		});
-	}
-
-	/**
-	 * Check if URL is in long format (contain default controller or action) or not,
-	 * if so, redirect to short-format URL, if not, call callback
-	 * @private
-	 * @param {Jumbo.Application.Request} req
-	 * @param {Function} callback
-	 */
-	checkURL(req, callback) {
-		var url = req.request.url.toLowerCase();
-
-		if (url == "/") {
-			callback();
-			return;
-		}
-
-		var defAction = Jumbo.Application.Application.defaultAction.toLowerCase();
-		var cntrlUrl = "/" + Jumbo.Application.Application.defaultController.toLowerCase();
-		var delimiter = this.locator.delimiter;
-
-		// Index page
-		if (url == cntrlUrl || url == cntrlUrl + delimiter || url == cntrlUrl + delimiter + defAction
-		) {
-			Log.line("Request for main page in long format -> redirect", Log.LogTypes.Http, Log.LogLevels.Talkative);
-			req.redirectURL("/");
-			return;
-		}
-
-		// Default action
-		if (defaultActionRegExp.test(url)) {
-			req.redirect(req.controller, defAction);
-			return;
-		}
-
-		callback();
 	}
 
 	/**
@@ -1024,13 +969,7 @@ class Application {
 			console.log("[DEBUG] Application.callAction() called");
 		}
 
-		var actionName;
-
-		if (req.subApp) {
-			actionName = this.controllerFactory.getSubAppActionName(req.subApp, req.controller, req.action);
-		} else {
-			actionName = this.controllerFactory.getActionName(req.controller, req.action);
-		}
+		var actionName = req.actionFullName;
 
 		var cntrlParent = Object.getPrototypeOf(cntrll.constructor);
 
@@ -1074,7 +1013,7 @@ class Application {
 		if (controller[actionName]) {
 			var args = [];
 			var actionArgs = [];
-			var controllerIdentifier = this.controllerFactory.getControllerName(request.controller).toLowerCase();
+			var controllerIdentifier = request.controllerFullName.toLowerCase();
 			var actionIdetifier = actionName.toLowerCase();
 
 			if (request.subApp == null) {
@@ -1157,6 +1096,9 @@ class Application {
 			}
 		});
 
+		// Add variable $lang to data object, contains current user's language
+		info.data['lang'] = cntrll.request.language;
+
 		this.prepareView(info, req, cntrll);
 	}
 
@@ -1209,7 +1151,7 @@ class Application {
 
 		// Cached in memory
 		if (this.memoryCacheQueue.indexOf(tplCacheFile) != -1) {
-			this.templateAdapter.renderPreCompiled(this.memoryCache[tplCacheFile], info.data, (err, result) => {
+			this.templateAdapter.renderPreCompiled(this.memoryCache[tplCacheFile], info.data, cntrl, (err, result) => {
 				this.sendView(err, result, req, cntrl);
 			});
 			return;
@@ -1226,7 +1168,7 @@ class Application {
 				return;
 			}
 
-			this.templateAdapter.renderPreCompiled(content, info.data, (err, result) => {
+			this.templateAdapter.renderPreCompiled(content, info.data, cntrl, (err, result) => {
 				this.sendView(err, result, req, cntrl);
 			});
 		});
@@ -1342,7 +1284,7 @@ class Application {
 					$fs.writeFile(tplCacheFile, compiledtemplate, () => {
 					});
 
-					this.templateAdapter.renderPreCompiled(compiledtemplate, info.data, (err, result) => {
+					this.templateAdapter.renderPreCompiled(compiledtemplate, info.data, cntrl, (err, result) => {
 						this.sendView(err, result, req, cntrl);
 					});
 				});
@@ -1352,7 +1294,7 @@ class Application {
 				}
 
 				// Do complete (compile and) render
-				this.templateAdapter.render(templatePath, layoutPath, info.data, (err, result) => {
+				this.templateAdapter.render(templatePath, layoutPath, info.data, cntrl, (err, result) => {
 					this.sendView(err, result, req, cntrl);
 				});
 			}

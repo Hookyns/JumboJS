@@ -2,16 +2,42 @@ const Jumplate = require("jumbo-template");
 
 //<editor-fold desc="Helpers">
 
-Jumplate.registerHelper("link", function (...args) {
-	return Jumbo.Application.Locator.prototype.generateUrl.apply(Jumbo.Application.Locator.instance, args);
+/**
+ * LINK helper
+ * Create application link
+ */
+Jumplate.registerHelper("link", function (controller, action, slashParams, queryParams, lang) {
+	if (!lang) {
+		lang = this.request.language;
+	}
+
+	return Jumbo.Application.Locator.prototype.generateUrl.call(Jumbo.Application.Locator.instance,
+		controller, action, slashParams, queryParams, null, lang);
 });
 
+/**
+ * APPLINK helper
+ * Create application link targeted to subbapp
+ */
+Jumplate.registerHelper("applink", function (subApp, controller, action, slashParams, queryParams, lang) {
+	if (!lang) {
+		lang = this.request.language;
+	}
+
+	return Jumbo.Application.Locator.prototype.generateUrl.call(Jumbo.Application.Locator.instance,
+		controller, action, slashParams, queryParams, subApp, lang);
+});
+
+/**
+ * FORM helper
+ */
 Jumplate.registerBlockHelper("form", function (content) {
 	return '<form method="POST" action="#" enctype="multipart/form-data">' + content + '</form>';
 });
 
+
 Jumplate.registerLocalizator(function (key) {
-	console.log("Implement localizator!");
+	console.log("Implement localizator in TemplateAdapter!");
 	return key;
 });
 
@@ -23,8 +49,9 @@ Jumplate.registerLocalizator(function (key) {
  */
 var TemplateAdapter = {
 
-	render: function render(templatePath, layoutPath, data, callback) {
+	render: function render(templatePath, layoutPath, data, context, callback) {
 		var template = new Jumplate(null, templatePath, null, layoutPath);
+		template.context = context;
 		template.compile(function (err) {
 			if (err) {
 				callback(err);
@@ -54,8 +81,9 @@ var TemplateAdapter = {
 		});
 	},
 
-	renderPreCompiled: function renderPreCompiled(compiledTemplate, data, callback) {
+	renderPreCompiled: function renderPreCompiled(compiledTemplate, data, context, callback) {
 		var template = Jumplate.fromCache(compiledTemplate);
+		template.context = context;
 		template.render(data, function (err, output) {
 			if (err) {
 				callback(err);
