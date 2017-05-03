@@ -22,7 +22,7 @@ Docs not completed yet.
 - fully configurable logging with log levels,
 - subdomains! More "modules" in one application accessible via subdomains,
 - a lot of things integrated but changeable thanks to Adapters,
-- code-first ORM with migrations (or MongoDB? or same wrap over all?) (soon),
+- code-first ORM/ODM with migrations (under development [UniMapperJS](https://github.com/Hookyns/unimapperjs)),
 - sessions stored on disk and in memory for faster access,
 - model (DTO, forms) validators (soon),
 - integrated email sender (soon),
