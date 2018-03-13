@@ -12,13 +12,13 @@ Watch docs [here](https://hookyns.github.io/JumboJS-docs/)
 Docs not completed yet.
 
 ## Main Features of JumboJS
-- No requires! Global lazy-loading namespace exists,
+- No requires hell! Global lazy-loading namespace exists,
 - integrated Node.js clustering - multi core / CPU support,
 - advanced variable routing system (just one route enough for most apps),
 - integrated Inversion of Control - constructor Dependency Injection,
 - code can be changed while runtime,
-- unexpected errors are catched and logged, then process is restarted,
-- client-side micro framework automatically creating SPA without any client-side programming (soon),
+- unexpected errors are catched and logged, then process will be restarted,
+- client-side micro framework automatically creating SPA without any client-side programming (does not replace client frameworks) (soon),
 - fully configurable logging with log levels,
 - subdomains! More "modules" in one application accessible via subdomains,
 - a lot of things integrated but changeable thanks to Adapters,
@@ -27,8 +27,8 @@ Docs not completed yet.
 - model (DTO, forms) validators (soon),
 - integrated email sender (soon),
 - native async & await support,
-- high performance - 3 000 requests per second with one worker (2,33 GHz core),
-- low dependecy - just few packages from 3rd party, it means that everything is made right for JumboJS,
+- high performance, ~3 900 requests per second with one worker (2,33 GHz core),
+- low dependecy,
 - integrated globalization.
 
 ## Instalation

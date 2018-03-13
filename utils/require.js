@@ -1,6 +1,6 @@
 /**
  * This file is part of Jumbo framework for Node.js
- * Written by Roman Jámbor
+ * Written by Roman Jámbor ©
  */
 
 /**

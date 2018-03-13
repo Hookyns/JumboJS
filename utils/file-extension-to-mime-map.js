@@ -1,5 +1,5 @@
 // Map object taken from node-mime
-var map = {
+const map = {
 	"application/andrew-inset": ["ez"],
 	"application/applixware": ["aw"],
 	"application/atom+xml": ["atom"],
@@ -787,10 +787,10 @@ var map = {
 	"x-conference/x-cooltalk": ["ice"]
 };
 
-var parsedMap = {};
-var i;
+let parsedMap = {};
+let i;
 
-for (var mime in map) {
+for (let mime in map) {
 	if (map.hasOwnProperty(mime)) {
 		for (i = 0; i < map[mime].length; i++) {
 			parsedMap[map[mime][i]] = mime;

@@ -1,53 +1,58 @@
 {
-  "name": "jumbo-core",
-  "version": "0.2.11",
-  "description": "Modern fast enterprise level MVC framework for Node.js",
-  "keywords": [
-    "jumbo",
-    "jumbojs",
-    "enterprise",
-    "mvc",
-    "framework",
-    "web",
-    "ria",
-    "rest",
-    "controller",
-    "validator",
-    "service",
-    "di",
-    "dependency",
-    "injection",
-    "ioc",
-    "upload",
-    "multipart",
-    "cluster",
-    "email",
-    "es6",
-    "es7",
-    "session",
-    "performance",
-    "subdomain",
-    "log",
-    "norequire"
-  ],
-  "author": {
-    "name": "Roman Jámbor",
-    "email": "hookcze@gmail.com"
-  },
-  "main": "loader.js",
-  "dependencies": {
-    "formidable": ">=1.0.17",
-    "less": ">=2.7.0"
-  },
-  "engines": {
-    "node": ">=7.7.0"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "http://github.com/Hookyns/JumboJS.git"
-  },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  }
+	"name": "jumbo-core",
+	"version": "0.2.11",
+	"description": "Modern fast enterprise level MVC framework for Node.js",
+	"keywords": [
+		"jumbo",
+		"jumbojs",
+		"enterprise",
+		"mvc",
+		"framework",
+		"web",
+		"ria",
+		"rest",
+		"controller",
+		"validator",
+		"service",
+		"di",
+		"dependency",
+		"injection",
+		"ioc",
+		"upload",
+		"multipart",
+		"cluster",
+		"email",
+		"es6",
+		"es7",
+		"session",
+		"performance",
+		"subdomain",
+		"log",
+		"norequire"
+	],
+	"author": {
+		"name": "Roman Jámbor",
+		"email": "hookcze@gmail.com"
+	},
+	"main": "loader.js",
+	"types": "loader.d.ts",
+	"dependencies": {
+		"formidable": "^1.1.1",
+		"uuid": "^3.2.1"
+	},
+	"devDependencies": {
+		"@types/node": "^8.9.4",
+		"typescript": "^2.7.2"
+	},
+	"engines": {
+		"node": ">=7.7.0"
+	},
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "http://github.com/Hookyns/JumboJS.git"
+	},
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	}
 }
