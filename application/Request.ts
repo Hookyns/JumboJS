@@ -27,7 +27,7 @@ export class Request
 	/**
 	 * Contains parsed cookies if getCookies() was called
 	 */
-	private cookies: {[key: string]: any};
+	private cookies: { [key: string]: any };
 
 	/**
 	 * Original request from http server
@@ -69,7 +69,7 @@ export class Request
 	/**
 	 * Request params
 	 */
-	params: {[key: string]: any} = null;
+	params: { [key: string]: any } = null;
 
 	/**
 	 * POST data
@@ -125,7 +125,8 @@ export class Request
 	 * @description Checking x-requested-with for being "XMLHttpRequest" in request header
 	 * @returns {boolean}
 	 */
-	isXhr() {
+	isXhr(): boolean
+	{
 		let x: string = <string>this.request.headers["x-requested-with"];
 		return x && x.toLowerCase() == "xmlhttprequest";
 	}
@@ -162,7 +163,7 @@ export class Request
 	 * Return client's IP
 	 * @returns {String}
 	 */
-	getIP()
+	getIP(): string
 	{
 		return Application.instance.getClientIP(this.request);
 	}

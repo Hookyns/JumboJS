@@ -353,13 +353,14 @@ export class Application
 			if (this.serverIsReady === true)
 			{
 				clearInterval(interval);
-				CAN_USE_CACHE = this.templateAdapter.preCompilation && Jumbo.config.cache.enabled;
 
 				if (!this.beforeRunWhenReadyCallback())
 				{
 					Application.exit();
 					return;
 				}
+
+				CAN_USE_CACHE = this.templateAdapter.preCompilation && Jumbo.config.cache.enabled;
 
 				if ($cluster.isMaster)
 				{
