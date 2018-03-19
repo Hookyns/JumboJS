@@ -37,7 +37,7 @@
 	"main": "loader.js",
 	"types": "loader.d.ts",
 	"dependencies": {
-		"formidable": "^1.1.1",
+		"formidable": "^1.2.0",
 		"uuid": "^3.2.1"
 	},
 	"devDependencies": {

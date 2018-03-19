@@ -23,6 +23,7 @@ const CPU_COUNT = !Jumbo.config.clustering.numberOfWorkers
     ? require('os').cpus().length
     : Jumbo.config.clustering.numberOfWorkers;
 const BEFORE_ACTION_NAME = "beforeActions";
+let CAN_USE_CACHE = false;
 let instance;
 class Application {
     constructor() {
@@ -118,6 +119,7 @@ class Application {
         let interval = setInterval(() => {
             if (this.serverIsReady === true) {
                 clearInterval(interval);
+                CAN_USE_CACHE = this.templateAdapter.preCompilation && Jumbo.config.cache.enabled;
                 if (!this.beforeRunWhenReadyCallback()) {
                     Application.exit();
                     return;
@@ -179,6 +181,9 @@ class Application {
         else {
             process.on("uncaughtException", function (err) {
                 Log_1.Log.error(err.message + "\n" + err.stack);
+                process.exit(1);
+            }).on("unhandledRejection", function (err) {
+                Log_1.Log.error("Unhandled rejection: " + err.message + "\n" + err.stack);
                 process.exit(1);
             }).on("message", (message) => {
                 this.clusterWorkerOnMessage(message);
@@ -318,7 +323,7 @@ class Application {
     async checkStaticFileRequest(request, response) {
         if (request.method == "GET" && request.url.slice(0, 7) == "/public") {
             let url = decodeURI(request.url);
-            return new Promise((resolve) => {
+            return await new Promise((resolve) => {
                 this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size) => {
                     if (error) {
                         this.displayError(request, response, {
@@ -498,7 +503,7 @@ class Application {
         form.uploadDir = Jumbo.UPLOAD_DIR;
         form.keepExtensions = true;
         let maxPostDataSize = Jumbo.config.maxPostDataSize || 5e6;
-        return new Promise((resolve, reject) => {
+        return await new Promise((resolve, reject) => {
             form.on("progress", async () => {
                 if (form.bytesExpected > maxPostDataSize) {
                     end = true;
@@ -587,7 +592,7 @@ class Application {
     }
     async afterAction(controller, actionResult) {
         if (DEBUG_MODE) {
-            console.log("[DEBUG] Application.processRequest controllerCallback() called");
+            console.log("[DEBUG] Application.afterAction() called");
         }
         let req = controller.request;
         let res = controller.response;
@@ -596,9 +601,12 @@ class Application {
         }
         if (actionResult.constructor == ViewResult_1.ViewResult) {
             actionResult.data._context = actionResult;
-            actionResult.clientMessages = actionResult.data.clientMessages = controller.crossRequestData[CLIENT_MESSAGE_ID];
+            actionResult.clientMessages = actionResult.data.clientMessages = (controller.crossRequestData[CLIENT_MESSAGE_ID] || {});
             actionResult.lang = controller.request.language;
             await this.prepareView(controller, req, res, actionResult);
+            if (DEBUG_MODE) {
+                console.log("[DEBUG] Application.afterAction() after prepareView call");
+            }
         }
         else {
             throw new Error(`Unexpected return value of action '${req.actionFullName}'`
@@ -629,6 +637,9 @@ class Application {
         return $path.join(Jumbo.CACHE_DIR, tplCacheFileName);
     }
     async prepareView(controller, req, res, viewResult) {
+        if (DEBUG_MODE) {
+            console.log("[DEBUG] Application.prepareView() called");
+        }
         if (!viewResult.view) {
             viewResult.view = req.controller + "/" + req.action;
         }
@@ -644,9 +655,8 @@ class Application {
                 });
             });
         }
-        let writeToCache = this.templateAdapter.preCompilation && Jumbo.config.cache.enabled;
-        if (req.noCache || !writeToCache) {
-            return await this.renderView(viewResult, req, res, controller, writeToCache, tplCacheFile);
+        if (req.noCache || !CAN_USE_CACHE) {
+            return await this.compileAndRenderView(viewResult, req, res, controller, CAN_USE_CACHE, tplCacheFile);
         }
         if (this.memoryCacheQueue.indexOf(tplCacheFile) != -1) {
             let tpl = await this.templateAdapter.renderPreCompiled(this.memoryCache[tplCacheFile], viewResult.data, controller);
@@ -655,10 +665,11 @@ class Application {
         if (DEBUG_MODE) {
             console.log("[DEBUG] Reading template from cache file");
         }
-        return await new Promise((resolve) => {
+        return await new Promise((resolve, reject) => {
             $fs.readFile(tplCacheFile, "utf-8", async (err, content) => {
                 if (err) {
-                    return await this.renderView(viewResult, req, res, controller, true, tplCacheFile);
+                    await this.compileAndRenderView(viewResult, req, res, controller, true, tplCacheFile);
+                    return resolve();
                 }
                 let tpl = await this.templateAdapter.renderPreCompiled(content, viewResult.data, controller);
                 this.sendView(tpl, res, controller);
@@ -667,13 +678,19 @@ class Application {
         });
     }
     sendView(output, res, ctrl) {
+        if (DEBUG_MODE) {
+            console.log("[DEBUG] Application.sendView() called");
+        }
         let response = res.response;
         res.headers["Content-Length"] = Buffer.byteLength(output, "utf-8");
         response.writeHead(200, res.headers);
         response.end(output);
         this.afterTemplateRender(ctrl);
     }
-    async renderView(viewResult, req, res, cntrl, writeToCache, tplCacheFileName) {
+    async compileAndRenderView(viewResult, req, res, cntrl, writeToCache, tplCacheFileName) {
+        if (DEBUG_MODE) {
+            console.log("[DEBUG] Application.renderView() called");
+        }
         let { templatePath, layoutPath, dynamicLayout } = this.prepareRenderViewProperties(req, viewResult);
         if (writeToCache) {
             if (DEBUG_MODE) {

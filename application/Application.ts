@@ -35,6 +35,7 @@ const CPU_COUNT = !Jumbo.config.clustering.numberOfWorkers
 	? require('os').cpus().length
 	: Jumbo.config.clustering.numberOfWorkers;
 const BEFORE_ACTION_NAME = "beforeActions";
+let CAN_USE_CACHE = false;
 
 //endregion
 
@@ -352,6 +353,7 @@ export class Application
 			if (this.serverIsReady === true)
 			{
 				clearInterval(interval);
+				CAN_USE_CACHE = this.templateAdapter.preCompilation && Jumbo.config.cache.enabled;
 
 				if (!this.beforeRunWhenReadyCallback())
 				{
@@ -477,6 +479,9 @@ export class Application
 		{
 			process.on("uncaughtException", function (err) {
 				Log.error(err.message + "\n" + err.stack);
+				process.exit(1)
+			}).on("unhandledRejection", function(err) {
+				Log.error("Unhandled rejection: " + err.message + "\n" + err.stack);
 				process.exit(1)
 			}).on("message", (message) => {
 				this.clusterWorkerOnMessage(message);
@@ -728,7 +733,7 @@ export class Application
 		{
 			let url = decodeURI(request.url);
 
-			return new Promise<boolean>((resolve) => {
+			return await new Promise<boolean>((resolve) => {
 				this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size) => {
 					if (error)
 					{
@@ -1098,7 +1103,7 @@ export class Application
 		form.keepExtensions = true;
 		let maxPostDataSize = Jumbo.config.maxPostDataSize || 5e6; // TODO: create procedure for parsing config and
 	                                                               // setting default values for notexisting properties
-		return new Promise<IBody>((resolve, reject) => {
+		return await new Promise<IBody>((resolve, reject) => {
 			// check for max file size limit
 			form.on("progress", async () => {
 				if (form.bytesExpected > maxPostDataSize)
@@ -1268,7 +1273,7 @@ export class Application
 	{
 		if (DEBUG_MODE)
 		{
-			console.log("[DEBUG] Application.processRequest controllerCallback() called");
+			console.log("[DEBUG] Application.afterAction() called");
 		}
 
 		let req = controller.request;
@@ -1288,10 +1293,15 @@ export class Application
 		if (actionResult.constructor == ViewResult)
 		{
 			actionResult.data._context = actionResult;
-			actionResult.clientMessages = actionResult.data.clientMessages = controller.crossRequestData[CLIENT_MESSAGE_ID];
+			actionResult.clientMessages = actionResult.data.clientMessages = (controller.crossRequestData[CLIENT_MESSAGE_ID] || {});
 			actionResult.lang = controller.request.language;
 
 			await this.prepareView(controller, req, res, actionResult);
+
+			if (DEBUG_MODE)
+			{
+				console.log("[DEBUG] Application.afterAction() after prepareView call");
+			}
 		}
 		else
 		{
@@ -1365,6 +1375,11 @@ export class Application
 	 */
 	private async prepareView(controller: Controller, req: Request, res: Response, viewResult: ViewResult)
 	{
+        if (DEBUG_MODE)
+        {
+            console.log("[DEBUG] Application.prepareView() called");
+        }
+
 		if (!viewResult.view)
 		{
 			viewResult.view = req.controller + "/" + req.action;
@@ -1389,12 +1404,10 @@ export class Application
 			});
 		}
 
-		let writeToCache = this.templateAdapter.preCompilation && Jumbo.config.cache.enabled; // TODO: Vytvořit konstantu - ale až v runOnReady
-
 		// Do complete (compile and) render
-		if (req.noCache || !writeToCache)
+		if (req.noCache || !CAN_USE_CACHE)
 		{
-			return await this.renderView(viewResult, req, res, controller, writeToCache, tplCacheFile);
+			return await this.compileAndRenderView(viewResult, req, res, controller, CAN_USE_CACHE, tplCacheFile);
 		}
 
 		// templateAdapter contain preCompilation, no noCache header in request and cache is enabled
@@ -1411,11 +1424,11 @@ export class Application
 			console.log("[DEBUG] Reading template from cache file");
 		}
 
-		return await new Promise((resolve) => {
+		return await new Promise((resolve, reject) => {
 			$fs.readFile(tplCacheFile, "utf-8", async (err, content) => {
-				if (err)
-				{ // No cache exists - do complete (compile and) render
-					return await this.renderView(viewResult, req, res, controller, true, tplCacheFile);
+				if (err) { // No cache exists - do complete (compile and) render
+					await this.compileAndRenderView(viewResult, req, res, controller, true, tplCacheFile);
+					return resolve();
 				}
 
 				let tpl = await this.templateAdapter.renderPreCompiled(content, viewResult.data, controller);
@@ -1433,6 +1446,11 @@ export class Application
 	 */
 	private sendView(output: string, res: Response, ctrl: Controller)
 	{
+        if (DEBUG_MODE)
+        {
+            console.log("[DEBUG] Application.sendView() called");
+        }
+
 		let response = res.response;
 
 		res.headers["Content-Length"] = Buffer.byteLength(output, "utf-8");
@@ -1451,9 +1469,14 @@ export class Application
 	 * @param {boolean} writeToCache
 	 * @param {string} tplCacheFileName
 	 */
-	private async renderView(viewResult: ViewResult, req: Request, res: Response,
+	private async compileAndRenderView(viewResult: ViewResult, req: Request, res: Response,
 		cntrl: Controller, writeToCache: boolean, tplCacheFileName: string)
 	{
+		if (DEBUG_MODE)
+		{
+			console.log("[DEBUG] Application.renderView() called");
+		}
+
 		let {templatePath, layoutPath, dynamicLayout} = this.prepareRenderViewProperties(req, viewResult);
 
 		// templateAdapter has preCompilation and cache is enabled => preCompile template and save it to cache
@@ -1464,7 +1487,7 @@ export class Application
 				console.log("[DEBUG] Precompiling template");
 			}
 
-			let compiledtemplate = await this.templateAdapter.preCompile(templatePath, layoutPath, dynamicLayout);
+            let compiledtemplate = await this.templateAdapter.preCompile(templatePath, layoutPath, dynamicLayout);
 			this.cacheViewTemplate(tplCacheFileName, compiledtemplate);
 
 			if (DEBUG_MODE)

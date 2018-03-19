@@ -58,7 +58,7 @@ export declare class Application {
     private getTemplateCacheName(viewResult, req);
     private prepareView(controller, req, res, viewResult);
     private sendView(output, res, ctrl);
-    private renderView(viewResult, req, res, cntrl, writeToCache, tplCacheFileName);
+    private compileAndRenderView(viewResult, req, res, cntrl, writeToCache, tplCacheFileName);
     private prepareRenderViewProperties(req, viewResult);
     private cacheViewTemplate(tplCacheFile, compiledtemplate);
     private afterTemplateRender(ctrl);

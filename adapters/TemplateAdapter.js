@@ -3,7 +3,7 @@
  * Written by Roman Jámbor ©
  */
 
-const Jumplate = require("jumbo-template");
+const {Jumplate} = require("jumbo-template");
 
 if (Jumbo.config.debugMode) {
 	Jumplate.debugMode = true;
@@ -55,7 +55,7 @@ Jumplate.registerBlockHelper("form", function (content) {
 	return '<form method="POST" action="#" enctype="multipart/form-data">' + content + '</form>';
 });
 
-Jumplate.registerHelper("json", function(obj) {
+Jumplate.registerHelper("json", function (obj) {
 	return JSON.stringify(obj);
 });
 
@@ -73,7 +73,7 @@ Jumplate.registerLocalizator(function (key) {
 const TemplateAdapter = {
 
 	render: async function render(templatePath, layoutPath, dynamicLayout, data, context) {
-		return new Promise((resolve, reject) => {
+		return await new Promise((resolve, reject) => {
 			let template = new Jumplate(null, templatePath, dynamicLayout || null, layoutPath);
 			template.context = context;
 			template.compile(function (err) {
@@ -93,12 +93,11 @@ const TemplateAdapter = {
 	},
 
 	preCompile: async function preCompile(templatePath, layoutPath, dynamicLayout) {
-		return new Promise((resolve, reject) => {
+		return await new Promise((resolve, reject) => {
 			let template = new Jumplate(null, templatePath, dynamicLayout || null, layoutPath);
 			template.compile(function (err, preCompiledTemplate) {
 				if (err) {
-					reject(err);
-					return;
+					return reject(err);
 				}
 
 				resolve(preCompiledTemplate);
@@ -112,8 +111,7 @@ const TemplateAdapter = {
 			template.context = context;
 			template.render(data, function (err, output) {
 				if (err) {
-					reject(err);
-					return;
+					return reject(err);
 				}
 
 				resolve(output);

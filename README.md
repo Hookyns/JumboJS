@@ -1,5 +1,5 @@
 # JumboJS
-Modern fast enterprise level MVC framework for Node.js
+Modern lightweight fast enterprise level MVW framework for Node.js
 
 ! Under development, but ready to use !
 
