@@ -295,7 +295,7 @@ class Application {
     }
     async serverCallback(request, response) {
         let requestBeginTime = new Date().getTime();
-        response.setHeader("X-Powered-By", "Jumbo");
+        response.setHeader("X-Powered-By", "JumboJS");
         let clientIP = this.getClientIP(request);
         try {
             let canContinue = this.checkRequestsLimit(response, clientIP);

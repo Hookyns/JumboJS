@@ -13,19 +13,18 @@ import {ViewResult} from "../results/ViewResult";
 
 let $fs, $path, fileExtensionToMimeMap;// Will be initiated when required
 let crossRequestDataStorage: { [key: string]: any } = {};// Cross request storage
-const locator: Locator = Locator.instance;
 const XJUMBO_REQUEST_ACTION_MAP = { // Object mapping x-jumbo-request types to controller actions
-	"contentView": function (ctrl: Controller, viewOrData, data = null) {
+	"text/html": function (ctrl: Controller, viewOrData, data = null) {
 		return ctrl.partialView(viewOrData, data);
 	},
-	"template": function (ctrl: Controller, view) {
+	"text/template": function (ctrl: Controller, view) {
 		return ctrl.template(typeof view == "string" ? view : null);
 	},
-	"viewData": function (ctrl: Controller, viewOrData, data = null) {
+	"application/json": function (ctrl: Controller, viewOrData, data = null) {
 		return ctrl.json(data || viewOrData || {});
 	},
 };
-const X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME = "x-jumbo-requested-view"; // Name of HTTP header property which should tells
+const X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME = "x-required-content-type"; // Name of HTTP header property which should tells
                                                                      // which view type is required
 
 /**
@@ -169,7 +168,7 @@ export class Controller
 	 * @param data
 	 * @return {ViewResult}
 	 */
-	protected createBaseViewResult(viewOrData: string | {}, data: {})
+	protected static createBaseViewResult(viewOrData: string | {}, data: {})
 	{
 		if (typeof viewOrData == "string")
 		{
@@ -226,7 +225,7 @@ export class Controller
 	 */
 	renderView(viewOrData, data = null): ViewResult
 	{
-		return this.createBaseViewResult(viewOrData, data);
+		return Controller.createBaseViewResult(viewOrData, data);
 	}
 
 	/**
@@ -237,7 +236,7 @@ export class Controller
 	 */
 	partialView(partialViewOrData = null, data = null): ViewResult
 	{
-		let res = this.createBaseViewResult(partialViewOrData, data);
+		let res = Controller.createBaseViewResult(partialViewOrData, data);
 		res.partialView = true;
 		return res;
 	}
@@ -248,7 +247,7 @@ export class Controller
 	 */
 	template(view = null): ViewResult
 	{
-		let res = this.createBaseViewResult(view, undefined);
+		let res = Controller.createBaseViewResult(view, undefined);
 		res.rawTemplate = true;
 		return res;
 	}
@@ -261,9 +260,11 @@ export class Controller
 	 */
 	view(viewOrData, data = null): ViewResult
 	{
-		if (this.request.isXhr())
+		let reqTypeHeader: string = this.request.request.headers[X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME] as string;
+
+		if (reqTypeHeader/*this.request.isXhr()*/)
 		{
-			let action = XJUMBO_REQUEST_ACTION_MAP[<string>this.request.request.headers[X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME]];
+			let action = XJUMBO_REQUEST_ACTION_MAP[reqTypeHeader];
 
 			if (action)
 			{
@@ -274,35 +275,32 @@ export class Controller
 		return this.renderView(viewOrData, data);
 	}
 
-	//
-	// /**
-	//  * Ends request and return default or given view with given data but without layout
-	//  * @param {String | Object} [viewOrData] Name of specific view or just data
-	//  * if your wanted view is default (if match with action name)
-	//  * @param {Object} [dataOrSnippetName] Data object or snppet name if first param contains data
-	//  * @param {string} [snippetName] Name of BLOCK which will be returned to client
-	//  */
-	// snippetView(viewOrData, dataOrSnippetName = null, snippetName = "content") {
-	// 	var rtrnData = {
-	// 		snippetName: snippetName,
-	// 		isSingle: true,
-	// 		isSnippet: true
-	// 	};
-	//
-	// 	if (typeof viewOrData == "string") {
-	// 		rtrnData.view = viewOrData;
-	// 		rtrnData.data = data || {};
-	// 	} else {
-	// 		rtrnData.view = null;
-	// 		rtrnData.data = viewOrData || {};
-	// 		rtrnData.snippetName = dataOrSnippetName || snippetName;
-	// 	}
-	//
-	// 	this.exited = true;
-	// 	this.callback(null, rtrnData);
-	// 	this.callback = function () { };
-	// }
-	//
+	// noinspection JSMethodCanBeStatic
+	/**
+	 * Ends request and return default or given view with given data but without layout
+	 * @param {String | Object} [viewOrData] Name of specific view or just data
+	 * if your wanted view is default (if match with action name)
+	 * @param {Object} [dataOrSnippetName] Data object or snppet name if first param contains data
+	 * @param {string} [snippetName] Name of BLOCK which will be returned to client
+	 */
+	snippetView(viewOrData, dataOrSnippetName = null, snippetName = "content"): ViewResult
+	{
+		let res;
+
+		if (typeof viewOrData == "string")
+		{
+			res = new ViewResult(viewOrData, dataOrSnippetName.constructor == Object ? dataOrSnippetName : {});
+		}
+		else
+		{
+			res = new ViewResult(null, viewOrData.constructor == Object ? viewOrData : {});
+		}
+
+		res.snippet = snippetName;
+		res.partialView = true;
+
+		return res;
+	}
 
 	/**
 	 * Ends request with result of given data and type
@@ -397,6 +395,15 @@ export class Controller
 			$fs.createReadStream(filePath).pipe(this.response.response);
 			this.exit();
 		});
+	}
+
+	/**
+	 * Redirect client to given URL
+	 * @param {Url} url
+	 */
+	protected redirect(url: Url) {
+		this.response.redirectUrl(url.getUrl());
+		this.exit();
 	}
 
 	//endregion

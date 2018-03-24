@@ -498,7 +498,7 @@ export class Locator
 	 * @param {$http.IncomingMessage} request
 	 * @returns {Object | null}
 	 */
-	parseUrl(request: $http.IncomingMessage)
+	parseUrl(request: $http.IncomingMessage): ILocatorMatch
 	{
 		let url = request.url.replace(DELIMITER_REGEX, "/"); // replace custom delimiters by slashes
 		let parse = $url.parse(url);
@@ -615,7 +615,7 @@ export class Locator
 			let lang = /*parse.pathname.slice(1) ||*/DEFAULT_LANGUAGE;
 
 			return {
-				location: null,
+				location: this.locations.get(DEFAULT_LOCATION_NAME),
 				subApp: subApp,
 				controller: DEFAULT_CONTROLLER,
 				action: DEFAULT_ACTION,

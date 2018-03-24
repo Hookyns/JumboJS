@@ -684,7 +684,7 @@ export class Application
 		let requestBeginTime = new Date().getTime();
 
 		// X-Poweder-By
-		response.setHeader("X-Powered-By", "Jumbo");
+		response.setHeader("X-Powered-By", "JumboJS");
 
 		// client IP from header
 		let clientIP = this.getClientIP(request);

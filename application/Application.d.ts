@@ -17,8 +17,8 @@ export declare class Application {
     private templateAdapter;
     private numberOfWorkerReady;
     serverIsRunning: boolean;
-    getLocator(): any;
-    getDIContainer(): any;
+    getLocator(): Locator;
+    getDIContainer(): DIContainer;
     setStaticFileResolver(handler: any): void;
     setBlockIpListener(listener: (clientIp: string) => void): void;
     static readonly instance: Application;
@@ -67,3 +67,5 @@ export declare class Application {
     private displayError(request, response, errObj);
     private renderException(message, ex, status, request, response);
 }
+import { Locator } from "jumbo-core/application/Locator";
+import { DIContainer } from "jumbo-core/ioc/DIContainer";

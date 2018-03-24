@@ -268,7 +268,7 @@ class Locator {
         if (emptyPath) {
             let lang = exports.DEFAULT_LANGUAGE;
             return {
-                location: null,
+                location: this.locations.get(DEFAULT_LOCATION_NAME),
                 subApp: subApp,
                 controller: exports.DEFAULT_CONTROLLER,
                 action: exports.DEFAULT_ACTION,

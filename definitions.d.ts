@@ -20,6 +20,9 @@
 // // }
 //
 
+// import {Application} from "./application/Application";
+// import {Application} from "./application/Application";
+
 declare interface JumboNamespace {
 	config: any,
 	CONFIG_PATH: string,
@@ -52,13 +55,13 @@ declare interface JumboNamespace {
 declare module NodeJS {
     interface Global {
 	    Jumbo: JumboNamespace;
-	    // Application: any;
+	    Application: Application;
 	    // App: any;
     }
 }
 
 declare const Jumbo: JumboNamespace;
-// declare var Application: any;
+// declare const Application: Application;
 // declare var App: any;
 //
 // declare namespace Core {}

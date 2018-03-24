@@ -18,13 +18,14 @@ export declare class Controller {
         [key: string]: any;
     }, scope: Scope): void;
     _clearOldCrossRequestData(): void;
-    protected createBaseViewResult(viewOrData: string | {}, data: {}): ViewResult;
+    protected static createBaseViewResult(viewOrData: string | {}, data: {}): ViewResult;
     exit(): void;
     addMessage(message: string, messageType: any): void;
     renderView(viewOrData: any, data?: any): ViewResult;
     partialView(partialViewOrData?: any, data?: any): ViewResult;
     template(view?: any): ViewResult;
     view(viewOrData: any, data?: any): ViewResult;
+    snippetView(viewOrData: any, dataOrSnippetName?: any, snippetName?: string): ViewResult;
     data(data: any, type?: string): void;
     json(jsonObj: any): void;
     error(message: any, statusCode?: number, error?: any): {
@@ -33,4 +34,5 @@ export declare class Controller {
         error: any;
     };
     fileDownload(filePath: any, newName: any, contentType: any): void;
+    protected redirect(url: Url): void;
 }

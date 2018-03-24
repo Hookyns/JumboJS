@@ -1,23 +1,21 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const Locator_1 = require("jumbo-core/application/Locator");
 const Url_1 = require("jumbo-core/utils/Url");
 const ViewResult_1 = require("../results/ViewResult");
 let $fs, $path, fileExtensionToMimeMap;
 let crossRequestDataStorage = {};
-const locator = Locator_1.Locator.instance;
 const XJUMBO_REQUEST_ACTION_MAP = {
-    "contentView": function (ctrl, viewOrData, data = null) {
+    "text/html": function (ctrl, viewOrData, data = null) {
         return ctrl.partialView(viewOrData, data);
     },
-    "template": function (ctrl, view) {
+    "text/template": function (ctrl, view) {
         return ctrl.template(typeof view == "string" ? view : null);
     },
-    "viewData": function (ctrl, viewOrData, data = null) {
+    "application/json": function (ctrl, viewOrData, data = null) {
         return ctrl.json(data || viewOrData || {});
     },
 };
-const X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME = "x-jumbo-requested-view";
+const X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME = "x-required-content-type";
 class Controller {
     constructor() {
         this.session = {};
@@ -60,7 +58,7 @@ class Controller {
         }
         delete crossRequestDataStorage[this.request.sessionId];
     }
-    createBaseViewResult(viewOrData, data) {
+    static createBaseViewResult(viewOrData, data) {
         if (typeof viewOrData == "string") {
             return new ViewResult_1.ViewResult(viewOrData, data || {});
         }
@@ -81,26 +79,39 @@ class Controller {
             .push({ message: message, type: messageType });
     }
     renderView(viewOrData, data = null) {
-        return this.createBaseViewResult(viewOrData, data);
+        return Controller.createBaseViewResult(viewOrData, data);
     }
     partialView(partialViewOrData = null, data = null) {
-        let res = this.createBaseViewResult(partialViewOrData, data);
+        let res = Controller.createBaseViewResult(partialViewOrData, data);
         res.partialView = true;
         return res;
     }
     template(view = null) {
-        let res = this.createBaseViewResult(view, undefined);
+        let res = Controller.createBaseViewResult(view, undefined);
         res.rawTemplate = true;
         return res;
     }
     view(viewOrData, data = null) {
-        if (this.request.isXhr()) {
-            let action = XJUMBO_REQUEST_ACTION_MAP[this.request.request.headers[X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME]];
+        let reqTypeHeader = this.request.request.headers[X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME];
+        if (reqTypeHeader) {
+            let action = XJUMBO_REQUEST_ACTION_MAP[reqTypeHeader];
             if (action) {
                 return action(this, viewOrData, data);
             }
         }
         return this.renderView(viewOrData, data);
+    }
+    snippetView(viewOrData, dataOrSnippetName = null, snippetName = "content") {
+        let res;
+        if (typeof viewOrData == "string") {
+            res = new ViewResult_1.ViewResult(viewOrData, dataOrSnippetName.constructor == Object ? dataOrSnippetName : {});
+        }
+        else {
+            res = new ViewResult_1.ViewResult(null, viewOrData.constructor == Object ? viewOrData : {});
+        }
+        res.snippet = snippetName;
+        res.partialView = true;
+        return res;
     }
     data(data, type = "text/plain") {
         if (type && type.trim().length != 0) {
@@ -147,6 +158,10 @@ class Controller {
             $fs.createReadStream(filePath).pipe(this.response.response);
             this.exit();
         });
+    }
+    redirect(url) {
+        this.response.redirectUrl(url.getUrl());
+        this.exit();
     }
 }
 Controller.clientMessagesId = "_clientMessages";

@@ -324,8 +324,4 @@ class Loader {
 Loader.initializeApplication();
 
 import {Application} from "./application/Application";
-// <reference path="./application/Application.d.ts"/>
-
 export const application: Application = (<any>global).Application;
-// export const application: Application = module.exports.app;
-
