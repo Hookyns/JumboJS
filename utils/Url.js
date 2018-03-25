@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const Locator_1 = require("jumbo-core/application//Locator");
-const locator = Locator_1.Locator.instance;
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Url");
+}
 class Url {
     constructor(request) {
         this.options = {};
@@ -45,12 +46,16 @@ class Url {
     getUrl() {
         const opt = this.options;
         if (this.options.location) {
-            return locator.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
+            return Locator_1.Locator.instance.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
         }
         else {
-            return locator.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
+            return Locator_1.Locator.instance.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
         }
     }
 }
 exports.Url = Url;
+const Locator_1 = require("jumbo-core/application//Locator");
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Url END");
+}
 //# sourceMappingURL=Url.js.map

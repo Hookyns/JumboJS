@@ -3,6 +3,13 @@
  * Written by Roman Jámbor ©
  */
 
+if (Jumbo.config.jumboDebugMode) {
+	console.log("[DEBUG] REQUIRE: ViewResult");
+}
+
+/**
+ * Model holding view context data.
+ */
 export class ViewResult implements IViewContext
 {
 	//region Fields
@@ -30,7 +37,7 @@ export class ViewResult implements IViewContext
 	/**
 	 * Data
 	 */
-	data: {};
+	data: any;
 
 	/**
 	 * Should be just raw (not rendered) template returned?
@@ -58,4 +65,9 @@ export class ViewResult implements IViewContext
 	}
 
 	//endregion
+}
+
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: ViewResut END");
 }

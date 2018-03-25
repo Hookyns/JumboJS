@@ -1,4 +1,3 @@
-import { Scope } from "./Scope";
 export declare class DIContainer {
     private registeredTypes;
     static readonly LifetimeScope: {
@@ -13,3 +12,4 @@ export declare class DIContainer {
     resolve(name: string, _scope?: Scope): any;
     resolveUnregistered(type: () => Function | Function | {}, _scope?: Scope): any;
 }
+import { Scope } from "./Scope";

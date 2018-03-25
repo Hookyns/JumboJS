@@ -1,9 +1,11 @@
-declare interface IMessage {
+declare interface IMessage
+{
 	message: string;
 	type: any;
 }
 
-declare interface IViewContext {
+declare interface IViewContext
+{
 	/**
 	 * Data for view
 	 */

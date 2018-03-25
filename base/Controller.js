@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const Url_1 = require("jumbo-core/utils/Url");
-const ViewResult_1 = require("../results/ViewResult");
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Controller");
+}
 let $fs, $path, fileExtensionToMimeMap;
 let crossRequestDataStorage = {};
 const XJUMBO_REQUEST_ACTION_MAP = {
@@ -24,7 +25,7 @@ class Controller {
         this.crossRequestData = null;
     }
     get url() {
-        return new Url_1.Url(this.request);
+        return new Jumbo.Utils.Url(this.request);
     }
     _initController(request, response, session, scope) {
         this.session = session;
@@ -166,4 +167,8 @@ class Controller {
 }
 Controller.clientMessagesId = "_clientMessages";
 exports.Controller = Controller;
+const ViewResult_1 = require("jumbo-core/results/ViewResult");
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Controller END");
+}
 //# sourceMappingURL=Controller.js.map

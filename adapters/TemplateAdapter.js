@@ -5,7 +5,7 @@
 
 const {Jumplate} = require("jumbo-template");
 
-if (Jumbo.config.debugMode) {
+if (Jumbo.config.jumboDebugMode) {
 	Jumplate.debugMode = true;
 }
 
@@ -122,7 +122,7 @@ const TemplateAdapter = {
 	/**
 	 * Extension of template files
 	 */
-	extension: ".tpl",
+	extension: ".cshtml",
 
 	/**
 	 * You implement preCompile and renderPreCompiled methods

@@ -3,6 +3,10 @@
  * Written by Roman Jámbor ©
  */
 
+if (Jumbo.config.jumboDebugMode) {
+	console.log("[DEBUG] REQUIRE: Locator");
+}
+
 //region Imports
 
 import * as $qs from "querystring";
@@ -10,7 +14,6 @@ import * as $url from "url";
 import * as $http from "http";
 import * as $object from "jumbo-core/utils/object";
 import {ControllerFactory} from "jumbo-core/application/ControllerFactory";
-import {RequestException} from "jumbo-core/exceptions/RequestException";
 
 //endregion
 
@@ -50,6 +53,7 @@ const PORT_REMOVE_REGEX = /:[0-9]+$/;
 const SQUARE_BRACKET_REGEX = /[\[\]]/g;
 const LOCATION_ALL_SLASHES_REGEX= /\//g;
 let DELIMITER_REGEX = LOCATION_ALL_SLASHES_REGEX; // Filled from setDelimiter
+let controllerFactory: ControllerFactory = null; // Set from get instance();
 
 //endregion
 
@@ -99,7 +103,8 @@ function locationParamReplacer(varName, lang, useLang, controller, action, param
 
 //endrgion
 
-let instance = null;
+const istanceKey = Symbol.for("Jumbo.Application.Locator");
+let instance = global[istanceKey] || null;
 
 /**
  * Class Locator for work with URLs and routing
@@ -196,7 +201,12 @@ export class Locator
 	{
 		if (instance == null)
 		{
-			instance = Reflect.construct(Locator, [], LocatorActivator);
+			global[istanceKey] = instance = Reflect.construct(Locator, [], LocatorActivator);
+
+			// Fill controllerFactory but return instance first
+			setImmediate(() => {
+				controllerFactory = Jumbo.Application.ControllerFactory.instance;
+			});
 		}
 
 		return instance;
@@ -366,7 +376,7 @@ export class Locator
 		queryParams: object = {}, subApp: string = null, lang: string = null, protocol: string = null,
 		host: string = null)
 	{
-		ControllerFactory.instance.getTargetPoint(subApp, controller, action);
+		controllerFactory.getTargetPoint(subApp, controller, action);
 
 		let baseUrl = "/";
 
@@ -852,4 +862,9 @@ export class Locator
 
 class LocatorActivator extends Locator
 {
+}
+
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: Locator END");
 }

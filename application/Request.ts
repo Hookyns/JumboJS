@@ -3,6 +3,10 @@
  * Written by Roman Jámbor ©
  */
 
+if (Jumbo.config.jumboDebugMode) {
+	console.log("[DEBUG] REQUIRE: Request");
+}
+
 //region Imports
 
 import * as $http from "http";
@@ -199,4 +203,9 @@ export class Request
 	}
 
 	//endregion
+}
+
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: Request END");
 }

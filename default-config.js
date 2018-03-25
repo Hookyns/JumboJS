@@ -1,4 +1,4 @@
-const $cfg = require("./config");
+const $cfg = require("jumbo-core/config");
 
 /**
  * @name ApplicationConfig
@@ -18,6 +18,11 @@ const ApplicationConfig = {
 	 * @default false
 	 */
 	debugMode: false,
+
+	/**
+	 * For framework debuging - extra logs
+	 */
+	jumboDebugMode: true,
 
 	/**
 	 * Protocol setting

@@ -3,14 +3,18 @@
  * Written by Roman Jámbor ©
  */
 
-import {Log} from "jumbo-core/logging/Log";
-import {Scope} from "jumbo-core/ioc/Scope";
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: ControllerFactory");
+}
 
 const FUNC_PARAM_REGEX = /^[\s\S]*?\(([\s\S]*?)\)/;
 const CTOR_PARAM_REGEX = /^[\s\S]*?constructor\s*\(([\s\S]*?)\)/;
 export const MAIN_SUBAPP_NAME = "_default";
 
-let instance = null;
+const istanceKey = Symbol.for("Jumbo.Application.ControllerFactory");
+let instance = global[istanceKey] || null;
+let locator: Locator = null; // Resolved in get instance()
 
 /**
  * Provide access to all controllers and actions in application. Contains verifications and constructions methods.
@@ -22,21 +26,6 @@ export class ControllerFactory
 {
 	//region Fields
 
-	constructor()
-	{
-		if (new.target != ControllerFactoryActivator)
-		{
-			throw new Error("You cannot call private constructor!");
-		}
-
-		this.loadControllersAndActions();
-		this.clearRequireCache();
-	}
-
-	//endregion
-
-	//region Static properties
-
 	/**
 	 * List of laded subapps
 	 */
@@ -44,7 +33,7 @@ export class ControllerFactory
 
 	//endregion
 
-	//region Ctors
+	//region Static properties
 
 	/**
 	 * Get instance of ControllerFactory
@@ -54,10 +43,30 @@ export class ControllerFactory
 	{
 		if (instance == null)
 		{
-			instance = Reflect.construct(ControllerFactory, [], ControllerFactoryActivator);
+			global[istanceKey] = instance = Reflect.construct(ControllerFactory, [], ControllerFactoryActivator);
+
+			// Fill locator but return instance first;
+			setImmediate(() => {
+				locator = Jumbo.Application.Locator.instance;
+			});
 		}
 
 		return instance;
+	}
+
+	//endregion
+
+	//region Ctors
+
+	constructor()
+	{
+		if (new.target != ControllerFactoryActivator)
+		{
+			throw new Error("You cannot call private constructor!");
+		}
+
+		this.loadControllersAndActions();
+		this.clearRequireCache();
 	}
 
 	//endregion
@@ -311,7 +320,8 @@ export class ControllerFactory
 		let actionId = this.getActionId(action, method);
 		let subId = subApp;
 
-		if (subApp == Locator.instance.main) {
+		if (subApp == locator.main)
+		{
 			subId = MAIN_SUBAPP_NAME;
 		}
 
@@ -370,19 +380,21 @@ export class ControllerFactory
 	 * @param {string} action
 	 * @returns {string | undefined}
 	 */
-	private findAction(actions: { [p: string]: IActionInfo }, action: string) : IActionInfo | undefined
+	private findAction(actions: { [p: string]: IActionInfo }, action: string): IActionInfo | undefined
 	{
 		action = action.toLowerCase();
 		let actNames = Object.keys(actions);
 		let actionVariant = [];
 
-		for (let method of ActionTypes) {
+		for (let method of ActionTypes)
+		{
 			actionVariant.push(method + action);
 		}
 
-		let actionName =  actNames.find(act => actionVariant.includes(act));
+		let actionName = actNames.find(act => actionVariant.includes(act));
 
-		if (actionName != undefined) {
+		if (actionName != undefined)
+		{
 			return actions[actionName];
 		}
 
@@ -461,23 +473,26 @@ export class ControllerFactory
 	{
 		for (let controllerName of Object.getOwnPropertyNames(namespace))
 		{
-			if (namespace[controllerName].constructor == Object) // Pokud se jedná o zanořený namespace
+			let item = namespace[controllerName];
+
+			if (item.constructor == Object) // if it's nested namespace
 			{
-				this.loadControllersFromNamespace(namespace[controllerName], subAppId, appendTo);
+				this.loadControllersFromNamespace(item, subAppId, appendTo);
 				continue;
 			}
-			else if (namespace[controllerName].prototype == undefined)
+			else if (item.prototype == undefined)
 			{
-				Log.error(`Controllers.${controllerName} doesn't export class.`);
+				Jumbo.Logging.Log.error(`Controllers.${controllerName} doesn't export class.`);
 				continue;
 			}
 
 			// Create object for controller
 			appendTo[controllerName.toLowerCase()] = {
 				name: controllerName,
-				params: this.getConstructorParameters(namespace[controllerName].prototype.constructor),
-				getClass: () => namespace[this.subApp[subAppId].controllers[controllerName.toLowerCase()].name],
-				actions: this.loadActionsFromController(namespace[controllerName])
+				params: this.getConstructorParameters(item.prototype.constructor),
+				getClass: () => item,
+				// getClass: () => namespace[this.subApp[subAppId].controllers[controllerName.toLowerCase()].name],
+				actions: this.loadActionsFromController(item)
 			};
 		}
 
@@ -540,37 +555,24 @@ export class ControllerFactory
 	 */
 	private clearRequireCache()
 	{
-		for (let mod of Object.keys(require.cache))
+		const {uncache} = require("jumbo-core/utils/require");
+
+		for (let modName of Object.keys(require.cache))
 		{
-			if (require.cache[mod].filename.slice(0, Jumbo.CORE_DIR.length).toLowerCase()
-				!= Jumbo.CORE_DIR.toLowerCase())
+			let mod = require.cache[modName];
+
+			// delete all cached modules from APP_DIR
+			if (mod && mod.filename.slice(0, Jumbo.APP_DIR.length).toLowerCase()
+				== Jumbo.APP_DIR.toLowerCase() && mod.filename.charAt(Jumbo.APP_DIR.length) != ".")
 			{
-				delete require.cache[mod];
+				uncache(modName);
 			}
 		}
 
-		// let req = require("../utils/require");
-		// let objs = Object.getOwnPropertyNames(App.Controllers);
-		// let c = objs.length;
-		//
-		// // noinspection ES6ConvertVarToLetConst
-		// for (var p = 0; p < c; p++)
-		// {
-		// 	req.uncache($path.join(Jumbo.APP_DIR, "Controllers", objs[p]));
-		// }
-		//
-		// let subApps = Object.getOwnPropertyNames(App.SubApps);
-		// let sc = subApps.length;
-		//
-		// for (let sp = 0; sp < sc; sp++)
-		// {
-		// 	objs = Object.getOwnPropertyNames(App.SubApps[subApps[sp]].Controllers);
-		// 	c = objs.length;
-		//
-		// 	for (p = 0; p < c; p++)
-		// 	{
-		// 		req.uncache($path.join(Jumbo.SUB_APP_DIR, this.subApp[subApps[sp].toLowerCase()].dir, "Controllers",
-		// objs[p])); } }
+		if (Jumbo.config.jumboDebugMode)
+		{
+			console.log("[DEBUG] require.cache cleared");
+		}
 	}
 
 	//endregion
@@ -585,3 +587,9 @@ class ControllerFactoryActivator extends ControllerFactory
 
 // At bottom cuz of cycle dependencies
 import {ActionTypes, Locator} from "jumbo-core/application/Locator";
+import {Scope} from "jumbo-core/ioc/Scope";
+
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: ControllerFactory END");
+}

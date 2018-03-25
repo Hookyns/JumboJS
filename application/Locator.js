@@ -1,9 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Locator");
+}
 const $qs = require("querystring");
 const $url = require("url");
 const $object = require("jumbo-core/utils/object");
-const ControllerFactory_1 = require("jumbo-core/application/ControllerFactory");
 const ParamType = {
     Integer: /[0-9]+/,
     StringId: /[a-zA-Z_]/,
@@ -31,6 +33,7 @@ const PORT_REMOVE_REGEX = /:[0-9]+$/;
 const SQUARE_BRACKET_REGEX = /[\[\]]/g;
 const LOCATION_ALL_SLASHES_REGEX = /\//g;
 let DELIMITER_REGEX = LOCATION_ALL_SLASHES_REGEX;
+let controllerFactory = null;
 function locationParamReplacer(varName, lang, useLang, controller, action, params, location) {
     if (varName == LOCATION_LANG_VARIABLE_NAME) {
         if (!useLang)
@@ -59,7 +62,8 @@ function locationParamReplacer(varName, lang, useLang, controller, action, param
     }
     return "";
 }
-let instance = null;
+const istanceKey = Symbol.for("Jumbo.Application.Locator");
+let instance = global[istanceKey] || null;
 class Locator {
     constructor() {
         this.locations = new Map();
@@ -87,7 +91,10 @@ class Locator {
     }
     static get instance() {
         if (instance == null) {
-            instance = Reflect.construct(Locator, [], LocatorActivator);
+            global[istanceKey] = instance = Reflect.construct(Locator, [], LocatorActivator);
+            setImmediate(() => {
+                controllerFactory = Jumbo.Application.ControllerFactory.instance;
+            });
         }
         return instance;
     }
@@ -143,7 +150,7 @@ class Locator {
         }
     }
     generateUrl(controller, action, slashParams = [], queryParams = {}, subApp = null, lang = null, protocol = null, host = null) {
-        ControllerFactory_1.ControllerFactory.instance.getTargetPoint(subApp, controller, action);
+        controllerFactory.getTargetPoint(subApp, controller, action);
         let baseUrl = "/";
         if (host || protocol || subApp) {
             baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
@@ -385,5 +392,8 @@ class Locator {
 }
 exports.Locator = Locator;
 class LocatorActivator extends Locator {
+}
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Locator END");
 }
 //# sourceMappingURL=Locator.js.map

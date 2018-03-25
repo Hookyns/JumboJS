@@ -1,14 +1,17 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const ControllerFactory_1 = require("../Application/ControllerFactory");
-const Log_1 = require("../logging/Log");
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: DIContainer");
+}
 const uuid = require("uuid/v1");
 const LifetimeScope = {
     SingleInstance: "singleinstance",
     ScopeInstance: "scopeinstance",
     InstancePerResolve: "instanceperresolve"
 };
-let instance = null;
+const istanceKey = Symbol.for("Jumbo.IoC.DIContainer");
+let instance = global[istanceKey] || null;
+let controllerFactory = null;
 class DIContainer {
     constructor() {
         this.registeredTypes = {};
@@ -20,12 +23,18 @@ class DIContainer {
         return LifetimeScope;
     }
     static get instance() {
-        if (instance === null) {
-            instance = Reflect.construct(DIContainer, [], DIContainerActivator);
+        if (instance == null) {
+            global[istanceKey] = instance = Reflect.construct(DIContainer, [], DIContainerActivator);
+            setImmediate(() => {
+                controllerFactory = Jumbo.Application.ControllerFactory.instance;
+            });
         }
         return instance;
     }
     register(expr, as, scope = LifetimeScope.InstancePerResolve) {
+        if (!expr) {
+            throw new Error(`Argument value is invalid. Parameter name: ${nameof({ expr })}`);
+        }
         this.registeredTypes[as] = {
             expr: expr,
             isExpr: !expr.prototype,
@@ -37,7 +46,7 @@ class DIContainer {
     resolveArguments(regType, _scope = null) {
         if (!regType.params) {
             let type = regType.isExpr ? regType.expr() : regType.expr;
-            regType.params = ControllerFactory_1.ControllerFactory.instance.getConstructorParameters(type.prototype.constructor);
+            regType.params = controllerFactory.getConstructorParameters(type.prototype.constructor);
         }
         if (regType.params && regType.params.length == 0) {
             return [];
@@ -111,5 +120,9 @@ class DIContainer {
 }
 exports.DIContainer = DIContainer;
 class DIContainerActivator extends DIContainer {
+}
+const Log_1 = require("../logging/Log");
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: DIContainer END");
 }
 //# sourceMappingURL=DIContainer.js.map

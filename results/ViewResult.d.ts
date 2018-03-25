@@ -3,7 +3,7 @@ export declare class ViewResult implements IViewContext {
     messages: Array<IMessage>;
     lang: string;
     view: string;
-    data: {};
+    data: any;
     rawTemplate: boolean;
     partialView: boolean;
     snippet: string;

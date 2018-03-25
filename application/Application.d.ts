@@ -22,7 +22,7 @@ export declare class Application {
     setStaticFileResolver(handler: any): void;
     setBlockIpListener(listener: (clientIp: string) => void): void;
     static readonly instance: Application;
-    setTemplateAdapter(adapter: any): void;
+    setTemplateAdapter(adapter: ITemplateAdapter): void;
     constructor();
     registerIntervalTask(time: any, func: any): void;
     registerDailyTask(hour: any, minute: any, second: any, func: any): void;

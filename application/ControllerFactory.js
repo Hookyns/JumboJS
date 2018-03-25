@@ -1,10 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const Log_1 = require("jumbo-core/logging/Log");
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: ControllerFactory");
+}
 const FUNC_PARAM_REGEX = /^[\s\S]*?\(([\s\S]*?)\)/;
 const CTOR_PARAM_REGEX = /^[\s\S]*?constructor\s*\(([\s\S]*?)\)/;
 exports.MAIN_SUBAPP_NAME = "_default";
-let instance = null;
+const istanceKey = Symbol.for("Jumbo.Application.ControllerFactory");
+let instance = global[istanceKey] || null;
+let locator = null;
 class ControllerFactory {
     constructor() {
         this.subApp = {};
@@ -16,7 +20,10 @@ class ControllerFactory {
     }
     static get instance() {
         if (instance == null) {
-            instance = Reflect.construct(ControllerFactory, [], ControllerFactoryActivator);
+            global[istanceKey] = instance = Reflect.construct(ControllerFactory, [], ControllerFactoryActivator);
+            setImmediate(() => {
+                locator = Jumbo.Application.Locator.instance;
+            });
         }
         return instance;
     }
@@ -74,7 +81,7 @@ class ControllerFactory {
         let controllerId = this.getControllerId(controller);
         let actionId = this.getActionId(action, method);
         let subId = subApp;
-        if (subApp == Locator_1.Locator.instance.main) {
+        if (subApp == locator.main) {
             subId = exports.MAIN_SUBAPP_NAME;
         }
         let sa = this.subApp[subId];
@@ -145,19 +152,20 @@ class ControllerFactory {
     }
     loadControllersFromNamespace(namespace, subAppId, appendTo = {}) {
         for (let controllerName of Object.getOwnPropertyNames(namespace)) {
-            if (namespace[controllerName].constructor == Object) {
-                this.loadControllersFromNamespace(namespace[controllerName], subAppId, appendTo);
+            let item = namespace[controllerName];
+            if (item.constructor == Object) {
+                this.loadControllersFromNamespace(item, subAppId, appendTo);
                 continue;
             }
-            else if (namespace[controllerName].prototype == undefined) {
-                Log_1.Log.error(`Controllers.${controllerName} doesn't export class.`);
+            else if (item.prototype == undefined) {
+                Jumbo.Logging.Log.error(`Controllers.${controllerName} doesn't export class.`);
                 continue;
             }
             appendTo[controllerName.toLowerCase()] = {
                 name: controllerName,
-                params: this.getConstructorParameters(namespace[controllerName].prototype.constructor),
-                getClass: () => namespace[this.subApp[subAppId].controllers[controllerName.toLowerCase()].name],
-                actions: this.loadActionsFromController(namespace[controllerName])
+                params: this.getConstructorParameters(item.prototype.constructor),
+                getClass: () => item,
+                actions: this.loadActionsFromController(item)
             };
         }
         return appendTo;
@@ -189,11 +197,16 @@ class ControllerFactory {
         };
     }
     clearRequireCache() {
-        for (let mod of Object.keys(require.cache)) {
-            if (require.cache[mod].filename.slice(0, Jumbo.CORE_DIR.length).toLowerCase()
-                != Jumbo.CORE_DIR.toLowerCase()) {
-                delete require.cache[mod];
+        const { uncache } = require("jumbo-core/utils/require");
+        for (let modName of Object.keys(require.cache)) {
+            let mod = require.cache[modName];
+            if (mod && mod.filename.slice(0, Jumbo.APP_DIR.length).toLowerCase()
+                == Jumbo.APP_DIR.toLowerCase() && mod.filename.charAt(Jumbo.APP_DIR.length) != ".") {
+                uncache(modName);
             }
+        }
+        if (Jumbo.config.jumboDebugMode) {
+            console.log("[DEBUG] require.cache cleared");
         }
     }
 }
@@ -201,4 +214,7 @@ exports.ControllerFactory = ControllerFactory;
 class ControllerFactoryActivator extends ControllerFactory {
 }
 const Locator_1 = require("jumbo-core/application/Locator");
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: ControllerFactory END");
+}
 //# sourceMappingURL=ControllerFactory.js.map

@@ -4,7 +4,7 @@ const $cluster = require("cluster");
 const $path = require("path");
 const $fs = require("fs");
 const ObjectUtils = require("jumbo-core/utils/object");
-let defaultConfig = require("./default-config.js");
+let defaultConfig = require("jumbo-core/default-config.js");
 if ($cluster.isMaster) {
     console.time("Application Master load-time: ");
 }
@@ -72,6 +72,9 @@ class Loader {
         const Application = require("jumbo-core/application/Application").Application;
         let app = Application.instance;
         global.Application = app;
+        global.nameof = function nameof(obj) {
+            return Object.keys(obj)[0];
+        };
     }
     deleteCachedFiles() {
         $fs.readdir(Jumbo.CACHE_DIR, (err, files) => {
@@ -102,7 +105,7 @@ class Loader {
         });
     }
     initAutoloader() {
-        const autoloader = require("./autoloader/autoloader");
+        const autoloader = require("jumbo-core/autoloader/autoloader");
         global.App = autoloader.App;
         let objs = Object.getOwnPropertyNames(autoloader.Core);
         let c = objs.length;
@@ -183,6 +186,11 @@ class Loader {
         }
     }
 }
+console.log("*******************************");
+console.log("**");
+console.log("** JumboJS, booting up...");
+console.log("**");
+console.log("*******************************");
 Loader.initializeApplication();
 exports.application = global.Application;
 //# sourceMappingURL=loader.js.map

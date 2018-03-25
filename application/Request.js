@@ -1,5 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Request");
+}
 const Application_1 = require("jumbo-core/application/Application");
 const UPPER_CASE_CHAR_REGEX = /[A-Z]/;
 class Request {
@@ -43,4 +46,7 @@ class Request {
     }
 }
 exports.Request = Request;
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Request END");
+}
 //# sourceMappingURL=Request.js.map

@@ -1,5 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Response");
+}
 class Response {
     constructor(response) {
         this.headers = { "Content-Type": "text/html" };
@@ -35,4 +38,7 @@ class Response {
     }
 }
 exports.Response = Response;
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Response END");
+}
 //# sourceMappingURL=Response.js.map

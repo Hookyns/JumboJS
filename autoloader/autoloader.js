@@ -37,6 +37,7 @@ function loadDir(dir) {
 		if (fileName.charAt(0) === "." || fileName === "node_modules") return;
 
 		let file = $path.resolve(dir, fileName);
+		file = file.charAt(0).toLowerCase() + file.slice(1);
 		let stat = $fs.lstatSync(file);
 
 		if (stat) {
@@ -87,12 +88,14 @@ function loadDir(dir) {
 							$path.join(dir, fileName));
 					}
 
+					// let pathRelative = $path.relative(__dirname, file);
+
 					// define getter which provide lazy loading
 					Object.defineProperty(result, cls, {
 						enumerable: true,
 						get: function () {
 							let req = require(file);
-							return req["default"] || req[cls] || req;
+							return req[cls] || req["default"] || req;
 						}
 					});
 				}

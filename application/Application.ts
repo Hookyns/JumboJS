@@ -3,6 +3,11 @@
  * Written by Roman Jámbor ©
  */
 
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: Application");
+}
+
 //region Imports
 
 import * as $cluster from "cluster"
@@ -12,9 +17,12 @@ import * as $url from "url";
 import * as $formidable from "formidable";
 import * as $https from "https";
 import * as $http from "http";
+import * as uuid from "uuid/v1";
+
 import * as $clusterCmds from "jumbo-core/cluster/cluster-messaging";
 import * as fileExtensionToMimeMap from "jumbo-core/utils/file-extension-to-mime-map";
-import * as uuid from "uuid/v1";
+import {Exception} from "jumbo-core/exceptions/Exception";
+import {ViewResult} from "jumbo-core/results/ViewResult";
 
 const $cfg = require("jumbo-core/config").Configurations;
 
@@ -26,6 +34,7 @@ const USE_HTTPS = Jumbo.config.protocol.protocol === $cfg.Protocols.Https;
 const CLIENT_MESSAGE_ID = Jumbo.Base.Controller.clientMessagesId;
 const GLOBALIZATION_ENABLED = Jumbo.config.globalization.enabled;
 const DEBUG_MODE = Jumbo.config.debugMode; // Does application run in debug mode?
+const JUMBO_DEBUG_MODE = Jumbo.config.jumboDebugMode; // Does application run in debug mode?
 const LOG_ENABLED = Jumbo.config.log.enabled === true; // Is logging enabled?
 const DEVELOPMENT_MODE = Jumbo.config.deployment == $cfg.Deployment.Development; // Does application run in debug mode?
 const CHECK_INTERVAL_TIME = 5;// Number of seconds, time for collecting data, after that time are limits (amplified by
@@ -40,7 +49,8 @@ let CAN_USE_CACHE = false;
 //endregion
 
 // Aplication singleton instance
-let instance: Application;
+const istanceKey = Symbol.for("Jumbo.Application.Application");
+let instance: Application = global[istanceKey] || null;
 
 /**
  * Class which contain HTTP server and do all the basic job around requests.
@@ -212,14 +222,14 @@ export class Application
 	}
 
 	/**
-	 * Get instance of ControllerFactory
-	 * @return {ControllerFactory}
+	 * Get instance of Application
+	 * @return {Application}
 	 */
 	static get instance(): Application
 	{
 		if (instance == null)
 		{
-			instance = Reflect.construct(Application, [], ApplicationActivator);
+			global[istanceKey] = instance = Reflect.construct(Application, [], ApplicationActivator);
 		}
 
 		return instance;
@@ -229,7 +239,7 @@ export class Application
 	 * Set your template adapter
 	 * @param {ITemplateAdapter} adapter
 	 */
-	public setTemplateAdapter(adapter)
+	public setTemplateAdapter(adapter: ITemplateAdapter)
 	{
 		if (adapter.constructor != Object || !("extension" in adapter)
 			|| !("preCompilation" in adapter)
@@ -481,7 +491,7 @@ export class Application
 			process.on("uncaughtException", function (err) {
 				Log.error(err.message + "\n" + err.stack);
 				process.exit(1)
-			}).on("unhandledRejection", function(err) {
+			}).on("unhandledRejection", function (err) {
 				Log.error("Unhandled rejection: " + err.message + "\n" + err.stack);
 				process.exit(1)
 			}).on("message", (message) => {
@@ -718,7 +728,7 @@ export class Application
 		catch (ex)
 		{
 			// Just for case of some unexpected but catchable error
-			this.displayError(request, response, ex);
+			await this.displayError(request, response, ex);
 		}
 	}
 
@@ -1191,7 +1201,7 @@ export class Application
 	 */
 	private async callBeforeActions(ctrl: Controller, request: Request): Promise<any>
 	{
-		if (DEBUG_MODE)
+		if (JUMBO_DEBUG_MODE)
 		{
 			console.log("[DEBUG] Application.callBeforeActions() called");
 		}
@@ -1233,7 +1243,7 @@ export class Application
 	 */
 	private async callAction(controller: Controller, request: Request): Promise<any>
 	{
-		if (DEBUG_MODE)
+		if (JUMBO_DEBUG_MODE)
 		{
 			console.log("[DEBUG] Application.callAction() called");
 		}
@@ -1270,9 +1280,9 @@ export class Application
 	 * @param {Controller} controller
 	 * @param actionResult
 	 */
-	private async afterAction(controller: Controller, actionResult: ViewResult | any)
+	private async afterAction(controller: Controller, actionResult: ViewResult)
 	{
-		if (DEBUG_MODE)
+		if (JUMBO_DEBUG_MODE)
 		{
 			console.log("[DEBUG] Application.afterAction() called");
 		}
@@ -1291,15 +1301,15 @@ export class Application
 		// 	return this.displayError(request, response, actionResult);
 		// }
 
-		if (actionResult.constructor == ViewResult)
+		if (actionResult.constructor == ViewResult) // actionResult.constructor == ViewResult should be 6x faster but it returns FALSE sometimes, WTF?
 		{
 			actionResult.data._context = actionResult;
-			actionResult.clientMessages = actionResult.data.clientMessages = (controller.crossRequestData[CLIENT_MESSAGE_ID] || {});
+			actionResult.messages = actionResult.data.clientMessages = (controller.crossRequestData[CLIENT_MESSAGE_ID] || {});
 			actionResult.lang = controller.request.language;
 
 			await this.prepareView(controller, req, res, actionResult);
 
-			if (DEBUG_MODE)
+			if (JUMBO_DEBUG_MODE)
 			{
 				console.log("[DEBUG] Application.afterAction() after prepareView call");
 			}
@@ -1376,10 +1386,10 @@ export class Application
 	 */
 	private async prepareView(controller: Controller, req: Request, res: Response, viewResult: ViewResult)
 	{
-        if (DEBUG_MODE)
-        {
-            console.log("[DEBUG] Application.prepareView() called");
-        }
+		if (JUMBO_DEBUG_MODE)
+		{
+			console.log("[DEBUG] Application.prepareView() called");
+		}
 
 		if (!viewResult.view)
 		{
@@ -1427,7 +1437,8 @@ export class Application
 
 		return await new Promise((resolve, reject) => {
 			$fs.readFile(tplCacheFile, "utf-8", async (err, content) => {
-				if (err) { // No cache exists - do complete (compile and) render
+				if (err)
+				{ // No cache exists - do complete (compile and) render
 					await this.compileAndRenderView(viewResult, req, res, controller, true, tplCacheFile);
 					return resolve();
 				}
@@ -1447,10 +1458,10 @@ export class Application
 	 */
 	private sendView(output: string, res: Response, ctrl: Controller)
 	{
-        if (DEBUG_MODE)
-        {
-            console.log("[DEBUG] Application.sendView() called");
-        }
+		if (JUMBO_DEBUG_MODE)
+		{
+			console.log("[DEBUG] Application.sendView() called");
+		}
 
 		let response = res.response;
 
@@ -1473,7 +1484,7 @@ export class Application
 	private async compileAndRenderView(viewResult: ViewResult, req: Request, res: Response,
 		cntrl: Controller, writeToCache: boolean, tplCacheFileName: string)
 	{
-		if (DEBUG_MODE)
+		if (JUMBO_DEBUG_MODE)
 		{
 			console.log("[DEBUG] Application.renderView() called");
 		}
@@ -1488,7 +1499,7 @@ export class Application
 				console.log("[DEBUG] Precompiling template");
 			}
 
-            let compiledtemplate = await this.templateAdapter.preCompile(templatePath, layoutPath, dynamicLayout);
+			let compiledtemplate = await this.templateAdapter.preCompile(templatePath, layoutPath, dynamicLayout);
 			this.cacheViewTemplate(tplCacheFileName, compiledtemplate);
 
 			if (DEBUG_MODE)
@@ -1743,8 +1754,6 @@ class ApplicationActivator extends Application
 import {
 	Locator, END_DELIMITER_TRIM_REGEX, DEFAULT_LANGUAGE, DEFAULT_ACTION, DEFAULT_CONTROLLER
 } from "jumbo-core/application/Locator";
-// import {RequestsLimitReachedException} from "jumbo-core/exceptions/RequestsLimitReachedException";
-// import {PreventContinueException} from "jumbo-core/exceptions/PreventContinueException";
 import {ControllerFactory, MAIN_SUBAPP_NAME} from "jumbo-core/application/ControllerFactory";
 import {DIContainer} from "jumbo-core/ioc/DIContainer";
 import {Log, LogTypes, LogLevels} from "jumbo-core/logging/Log";
@@ -1752,6 +1761,9 @@ import {Response} from "jumbo-core/application/Response";
 import {Request} from "jumbo-core/application/Request";
 import {RequestException} from "jumbo-core/exceptions/RequestException";
 import {Controller} from "jumbo-core/base/Controller";
-import {Scope} from "../ioc/Scope";
-import {Exception} from "../exceptions/Exception";
-import {ViewResult} from "../results/ViewResult";
+import {Scope} from "jumbo-core/ioc/Scope";
+
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: Application END");
+}

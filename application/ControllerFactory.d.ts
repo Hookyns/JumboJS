@@ -1,9 +1,8 @@
-import { Scope } from "jumbo-core/ioc/Scope";
 export declare const MAIN_SUBAPP_NAME = "_default";
 export declare class ControllerFactory {
-    constructor();
     private subApp;
     static readonly instance: ControllerFactory;
+    constructor();
     getSubAppId(subApp: string): SubAppIdString;
     getControllerId(controller: string): ControllerIdString;
     getActionId(action: string, method?: string): ActionIdString;
@@ -25,3 +24,4 @@ export declare class ControllerFactory {
     private loadControllersAndActions();
     private clearRequireCache();
 }
+import { Scope } from "jumbo-core/ioc/Scope";

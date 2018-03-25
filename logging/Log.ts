@@ -44,7 +44,7 @@ export enum LogLevels {
 
 /**
  * Static class for logging
- * @class
+ * @class Log
  * @memberOf Jumbo.Logging
  */
 export class Log

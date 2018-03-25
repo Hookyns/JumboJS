@@ -1,5 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Scope");
+}
 const DIContainer_1 = require("./DIContainer");
 const diCotainer = DIContainer_1.DIContainer.instance;
 class Scope {
@@ -14,4 +17,7 @@ class Scope {
     }
 }
 exports.Scope = Scope;
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Scope END");
+}
 //# sourceMappingURL=Scope.js.map

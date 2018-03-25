@@ -1,4 +1,3 @@
-import { Request } from "jumbo-core/application/Request";
 export declare class Url {
     private options;
     constructor(request: Request);
@@ -10,3 +9,4 @@ export declare class Url {
     location(location: string): Url;
     getUrl(): string;
 }
+import { Request } from "jumbo-core/application/Request";

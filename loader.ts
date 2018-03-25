@@ -11,7 +11,7 @@ import * as $fs from "fs";
 import * as ObjectUtils from "jumbo-core/utils/object";
 
 // Default config values
-let defaultConfig = require("./default-config.js");
+let defaultConfig = require("jumbo-core/default-config.js");
 
 // Start timer measuring application load time
 if ($cluster.isMaster) {
@@ -146,6 +146,11 @@ class Loader {
 		// 	 */
 		// 	Jumbo: Jumbo
 		// };
+
+		// Additional global objects
+		(<any>global).nameof = function nameof(obj) {
+			return Object.keys(obj)[0];
+		};
 	}
 
 	//endregion
@@ -203,7 +208,7 @@ class Loader {
 	 */
 	public initAutoloader() {
 		// Load the Autoloader
-		const autoloader = require("./autoloader/autoloader");
+		const autoloader = require("jumbo-core/autoloader/autoloader");
 
 		/**
 		 * @namespace App
@@ -320,6 +325,12 @@ class Loader {
 
 	//endregion
 }
+
+console.log("*******************************");
+console.log("**");
+console.log("** JumboJS, booting up...");
+console.log("**");
+console.log("*******************************");
 
 Loader.initializeApplication();
 

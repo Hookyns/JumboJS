@@ -3,9 +3,10 @@
  * Written by Roman Jámbor ©
  */
 
-import {Scope} from "./Scope";
-import {ControllerFactory} from "../Application/ControllerFactory";
-import {Log} from "../logging/Log";
+if (Jumbo.config.jumboDebugMode) {
+	console.log("[DEBUG] REQUIRE: DIContainer");
+}
+
 import * as uuid from "uuid/v1";
 
 const LifetimeScope = {
@@ -14,7 +15,9 @@ const LifetimeScope = {
 	InstancePerResolve: "instanceperresolve"
 };
 
-let instance = null;
+const istanceKey = Symbol.for("Jumbo.IoC.DIContainer");
+let instance = global[istanceKey] || null;
+let controllerFactory: ControllerFactory = null; // Set in get instance()
 
 /**
  * IoC Dependency Injection Container used for registering and resolving types
@@ -49,9 +52,14 @@ export class DIContainer
 	 */
 	static get instance(): DIContainer
 	{
-		if (instance === null)
+		if (instance == null)
 		{
-			instance = Reflect.construct(DIContainer, [], DIContainerActivator);
+			global[istanceKey] = instance = Reflect.construct(DIContainer, [], DIContainerActivator);
+
+			// Fill controllerFactory but return instance first;
+			setImmediate(() => {
+				controllerFactory = Jumbo.Application.ControllerFactory.instance;
+			})
 		}
 
 		return instance;
@@ -85,6 +93,10 @@ export class DIContainer
 	 */
 	register(expr: () => Function | Function | {}, as: string, scope = LifetimeScope.InstancePerResolve)
 	{
+		if (!expr) {
+			throw new Error(`Argument value is invalid. Parameter name: ${nameof({expr})}`);
+		}
+
 		this.registeredTypes[as] = {
 			expr: expr,
 			isExpr: !expr.prototype/* && expr.toString().slice(0, 5) != "class"*/, // only lambda can be expression
@@ -107,7 +119,7 @@ export class DIContainer
 		if (!regType.params)
 		{
 			let type = regType.isExpr ? regType.expr() : regType.expr;
-			regType.params = ControllerFactory.instance.getConstructorParameters(type.prototype.constructor);
+			regType.params = controllerFactory.getConstructorParameters(type.prototype.constructor);
 		}
 
 		// If type's args were already resolved and its length is 0
@@ -249,4 +261,14 @@ export class DIContainer
  */
 class DIContainerActivator extends DIContainer
 {
+}
+
+// At bottom cuz of circle dependencies
+import {Scope} from "./Scope";
+import {ControllerFactory} from "jumbo-core/Application/ControllerFactory";
+import {Log} from "../logging/Log";
+
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: DIContainer END");
 }

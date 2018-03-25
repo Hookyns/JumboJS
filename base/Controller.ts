@@ -3,13 +3,9 @@
  * Written by Roman Jámbor ©
  */
 
-import {Locator} from "jumbo-core/application/Locator";
-import {Url} from "jumbo-core/utils/Url";
-import {Request} from "jumbo-core/application/Request";
-import {Response} from "jumbo-core/application/Response";
-import {Scope} from "jumbo-core/ioc/Scope";
-import {ViewResult} from "../results/ViewResult";
-
+if (Jumbo.config.jumboDebugMode) {
+	console.log("[DEBUG] REQUIRE: Controller");
+}
 
 let $fs, $path, fileExtensionToMimeMap;// Will be initiated when required
 let crossRequestDataStorage: { [key: string]: any } = {};// Cross request storage
@@ -87,7 +83,7 @@ export class Controller
 	 */
 	protected get url(): Url
 	{
-		return new Url(this.request);
+		return new Jumbo.Utils.Url(this.request);
 	}
 
 	//endregion
@@ -260,7 +256,7 @@ export class Controller
 	 */
 	view(viewOrData, data = null): ViewResult
 	{
-		let reqTypeHeader: string = this.request.request.headers[X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME] as string;
+		let reqTypeHeader: string = <string>this.request.request.headers[X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME];
 
 		if (reqTypeHeader/*this.request.isXhr()*/)
 		{
@@ -409,4 +405,15 @@ export class Controller
 	//endregion
 
 	//endregion
+}
+
+import {Url} from "jumbo-core/utils/Url";
+import {Request} from "jumbo-core/application/Request";
+import {Response} from "jumbo-core/application/Response";
+import {Scope} from "jumbo-core/ioc/Scope";
+import {ViewResult} from "jumbo-core/results/ViewResult";
+
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: Controller END");
 }

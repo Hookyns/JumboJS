@@ -1,3 +1,12 @@
+/**
+ * This file is part of Jumbo framework for Node.js
+ * Written by Roman Jámbor ©
+ */
+
+if (Jumbo.config.jumboDebugMode) {
+	console.log("[DEBUG] REQUIRE: Scope");
+}
+
 import {DIContainer} from "./DIContainer";
 
 const diCotainer = DIContainer.instance;
@@ -52,4 +61,9 @@ export class Scope
 	}
 
 	//endregion
+}
+
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: Scope END");
 }

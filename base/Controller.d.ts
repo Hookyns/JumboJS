@@ -1,8 +1,3 @@
-import { Url } from "jumbo-core/utils/Url";
-import { Request } from "jumbo-core/application/Request";
-import { Response } from "jumbo-core/application/Response";
-import { Scope } from "jumbo-core/ioc/Scope";
-import { ViewResult } from "../results/ViewResult";
 export declare class Controller {
     request: Request;
     response: Response;
@@ -36,3 +31,8 @@ export declare class Controller {
     fileDownload(filePath: any, newName: any, contentType: any): void;
     protected redirect(url: Url): void;
 }
+import { Url } from "jumbo-core/utils/Url";
+import { Request } from "jumbo-core/application/Request";
+import { Response } from "jumbo-core/application/Response";
+import { Scope } from "jumbo-core/ioc/Scope";
+import { ViewResult } from "jumbo-core/results/ViewResult";

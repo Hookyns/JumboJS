@@ -3,13 +3,14 @@
  * Written by Roman Jámbor ©
  */
 
-import {Request} from "jumbo-core/application/Request";
-import {Locator} from "jumbo-core/application//Locator";
-
-const locator = Locator.instance;
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: Url");
+}
 
 /**
  * Class for URL generation
+ * @class Url
  * @memberOf Jumbo.Utils
  */
 export class Url
@@ -119,13 +120,21 @@ export class Url
 
 		if (this.options.location)
 		{
-			return locator.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
+			return Locator.instance.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
 		}
 		else
 		{
-			return locator.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
+			return Locator.instance.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
 		}
 	}
 
 	//endregion
+}
+
+import {Request} from "jumbo-core/application/Request";
+import {Locator} from "jumbo-core/application//Locator";
+
+if (Jumbo.config.jumboDebugMode)
+{
+	console.log("[DEBUG] REQUIRE: Url END");
 }

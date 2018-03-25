@@ -1,5 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Application");
+}
 const $cluster = require("cluster");
 const $path = require("path");
 const $fs = require("fs");
@@ -7,14 +10,17 @@ const $url = require("url");
 const $formidable = require("formidable");
 const $https = require("https");
 const $http = require("http");
+const uuid = require("uuid/v1");
 const $clusterCmds = require("jumbo-core/cluster/cluster-messaging");
 const fileExtensionToMimeMap = require("jumbo-core/utils/file-extension-to-mime-map");
-const uuid = require("uuid/v1");
+const Exception_1 = require("jumbo-core/exceptions/Exception");
+const ViewResult_1 = require("jumbo-core/results/ViewResult");
 const $cfg = require("jumbo-core/config").Configurations;
 const USE_HTTPS = Jumbo.config.protocol.protocol === $cfg.Protocols.Https;
 const CLIENT_MESSAGE_ID = Jumbo.Base.Controller.clientMessagesId;
 const GLOBALIZATION_ENABLED = Jumbo.config.globalization.enabled;
 const DEBUG_MODE = Jumbo.config.debugMode;
+const JUMBO_DEBUG_MODE = Jumbo.config.jumboDebugMode;
 const LOG_ENABLED = Jumbo.config.log.enabled === true;
 const DEVELOPMENT_MODE = Jumbo.config.deployment == $cfg.Deployment.Development;
 const CHECK_INTERVAL_TIME = 5;
@@ -24,7 +30,8 @@ const CPU_COUNT = !Jumbo.config.clustering.numberOfWorkers
     : Jumbo.config.clustering.numberOfWorkers;
 const BEFORE_ACTION_NAME = "beforeActions";
 let CAN_USE_CACHE = false;
-let instance;
+const istanceKey = Symbol.for("Jumbo.Application.Application");
+let instance = global[istanceKey] || null;
 class Application {
     constructor() {
         this.server = null;
@@ -94,7 +101,7 @@ class Application {
     }
     static get instance() {
         if (instance == null) {
-            instance = Reflect.construct(Application, [], ApplicationActivator);
+            global[istanceKey] = instance = Reflect.construct(Application, [], ApplicationActivator);
         }
         return instance;
     }
@@ -317,7 +324,7 @@ class Application {
             await this.processRequest(request, response, requestBeginTime);
         }
         catch (ex) {
-            this.displayError(request, response, ex);
+            await this.displayError(request, response, ex);
         }
     }
     async checkStaticFileRequest(request, response) {
@@ -541,7 +548,7 @@ class Application {
         }
     }
     async callBeforeActions(ctrl, request) {
-        if (DEBUG_MODE) {
+        if (JUMBO_DEBUG_MODE) {
             console.log("[DEBUG] Application.callBeforeActions() called");
         }
         let beforeActionsResult;
@@ -569,7 +576,7 @@ class Application {
         }
     }
     async callAction(controller, request) {
-        if (DEBUG_MODE) {
+        if (JUMBO_DEBUG_MODE) {
             console.log("[DEBUG] Application.callAction() called");
         }
         let action = controller[request.actionFullName];
@@ -591,7 +598,7 @@ class Application {
         }
     }
     async afterAction(controller, actionResult) {
-        if (DEBUG_MODE) {
+        if (JUMBO_DEBUG_MODE) {
             console.log("[DEBUG] Application.afterAction() called");
         }
         let req = controller.request;
@@ -601,10 +608,10 @@ class Application {
         }
         if (actionResult.constructor == ViewResult_1.ViewResult) {
             actionResult.data._context = actionResult;
-            actionResult.clientMessages = actionResult.data.clientMessages = (controller.crossRequestData[CLIENT_MESSAGE_ID] || {});
+            actionResult.messages = actionResult.data.clientMessages = (controller.crossRequestData[CLIENT_MESSAGE_ID] || {});
             actionResult.lang = controller.request.language;
             await this.prepareView(controller, req, res, actionResult);
-            if (DEBUG_MODE) {
+            if (JUMBO_DEBUG_MODE) {
                 console.log("[DEBUG] Application.afterAction() after prepareView call");
             }
         }
@@ -637,7 +644,7 @@ class Application {
         return $path.join(Jumbo.CACHE_DIR, tplCacheFileName);
     }
     async prepareView(controller, req, res, viewResult) {
-        if (DEBUG_MODE) {
+        if (JUMBO_DEBUG_MODE) {
             console.log("[DEBUG] Application.prepareView() called");
         }
         if (!viewResult.view) {
@@ -678,7 +685,7 @@ class Application {
         });
     }
     sendView(output, res, ctrl) {
-        if (DEBUG_MODE) {
+        if (JUMBO_DEBUG_MODE) {
             console.log("[DEBUG] Application.sendView() called");
         }
         let response = res.response;
@@ -688,7 +695,7 @@ class Application {
         this.afterTemplateRender(ctrl);
     }
     async compileAndRenderView(viewResult, req, res, cntrl, writeToCache, tplCacheFileName) {
-        if (DEBUG_MODE) {
+        if (JUMBO_DEBUG_MODE) {
             console.log("[DEBUG] Application.renderView() called");
         }
         let { templatePath, layoutPath, dynamicLayout } = this.prepareRenderViewProperties(req, viewResult);
@@ -829,6 +836,7 @@ const DIContainer_1 = require("jumbo-core/ioc/DIContainer");
 const Log_1 = require("jumbo-core/logging/Log");
 const Response_1 = require("jumbo-core/application/Response");
 const Request_1 = require("jumbo-core/application/Request");
-const Exception_1 = require("../exceptions/Exception");
-const ViewResult_1 = require("../results/ViewResult");
+if (Jumbo.config.jumboDebugMode) {
+    console.log("[DEBUG] REQUIRE: Application END");
+}
 //# sourceMappingURL=Application.js.map

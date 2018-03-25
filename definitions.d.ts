@@ -61,6 +61,7 @@ declare module NodeJS {
 }
 
 declare const Jumbo: JumboNamespace;
+declare function nameof(obj: any): string;
 // declare const Application: Application;
 // declare var App: any;
 //
