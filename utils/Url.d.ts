@@ -5,7 +5,7 @@ export declare class Url {
     controller(controller: string): Url;
     subApp(subApp: string): Url;
     params(params: any): Url;
-    language(language: any): Url;
+    locale(locale: any): Url;
     location(location: string): Url;
     getUrl(): string;
 }

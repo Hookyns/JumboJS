@@ -25,9 +25,9 @@ export class ViewResult implements IViewContext
 	messages: Array<IMessage>;
 
 	/**
-	 * Current language
+	 * Current locale
 	 */
-	lang: string;
+	locale: string;
 
 	/**
 	 * View name/path

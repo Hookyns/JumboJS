@@ -30,6 +30,7 @@ const CPU_COUNT = !Jumbo.config.clustering.numberOfWorkers
     : Jumbo.config.clustering.numberOfWorkers;
 const BEFORE_ACTION_NAME = "beforeActions";
 let CAN_USE_CACHE = false;
+const MAX_POST_DATA_SIZE = Jumbo.config.maxPostDataSize;
 const istanceKey = Symbol.for("Jumbo.Application.Application");
 let instance = global[istanceKey] || null;
 class Application {
@@ -83,6 +84,7 @@ class Application {
         }
         this.serverIsReady = true;
         this.initClustering();
+        this.setErrorHandlingEvents();
     }
     getLocator() {
         return this.locator;
@@ -171,6 +173,15 @@ class Application {
         }
         return true;
     }
+    setErrorHandlingEvents() {
+        process.on("uncaughtException", function (err) {
+            Log_1.Log.error(err.message + "\n" + err.stack);
+            process.exit(1);
+        }).on("unhandledRejection", function (err) {
+            Log_1.Log.error("Unhandled rejection: " + err.message + "\n" + err.stack);
+            process.exit(1);
+        });
+    }
     initClustering() {
         if ($cluster.isMaster) {
             if (Jumbo.config.clustering && typeof Jumbo.config.clustering.numberOfWorkers == "number"
@@ -186,13 +197,7 @@ class Application {
             }
         }
         else {
-            process.on("uncaughtException", function (err) {
-                Log_1.Log.error(err.message + "\n" + err.stack);
-                process.exit(1);
-            }).on("unhandledRejection", function (err) {
-                Log_1.Log.error("Unhandled rejection: " + err.message + "\n" + err.stack);
-                process.exit(1);
-            }).on("message", (message) => {
+            process.on("message", (message) => {
                 this.clusterWorkerOnMessage(message);
             });
         }
@@ -330,19 +335,31 @@ class Application {
     async checkStaticFileRequest(request, response) {
         if (request.method == "GET" && request.url.slice(0, 7) == "/public") {
             let url = decodeURI(request.url);
-            return await new Promise((resolve) => {
-                this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size) => {
-                    if (error) {
-                        this.displayError(request, response, {
-                            status: 404,
-                            message: "File '" + url + "' error. " + error.message
-                        });
+            return await new Promise((resolve, reject) => {
+                this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size, headers) => {
+                    try {
+                        if (error) {
+                            this.displayError(request, response, {
+                                status: 404,
+                                message: "File '" + url + "' error. " + error.message
+                            });
+                            return resolve(false);
+                        }
+                        Log_1.Log.line("Streaming static file '" + url + "'.", Log_1.LogTypes.Http, Log_1.LogLevels.Talkative);
+                        if (!headers || headers.constructor != Object) {
+                            headers = {
+                                "Content-Type": mime,
+                                "Content-Length": size,
+                                "Cache-Control": "public, max-age=43200"
+                            };
+                        }
+                        response.writeHead(200, headers);
+                        fileStream.pipe(response);
                         return resolve(false);
                     }
-                    Log_1.Log.line("Streaming static file '" + url + "'.", Log_1.LogTypes.Http, Log_1.LogLevels.Talkative);
-                    response.writeHead(200, { "Content-Type": mime, "Content-Length": size });
-                    fileStream.pipe(response);
-                    return resolve(false);
+                    catch (e) {
+                        reject(e);
+                    }
                 });
             });
         }
@@ -478,15 +495,12 @@ class Application {
         let req = new Request_1.Request(request);
         req._bindLocation(match.location, target.subApp, target.controller, target.action, match.params);
         req.beginTime = requestBeginTime;
-        req.language = match.language;
+        req.locale = match.locale;
         return req;
     }
     checkLongFormatUrl(req, match) {
         let url = req.request.url;
         let delimiter = this.locator.delimiter;
-        if (GLOBALIZATION_ENABLED && url.slice(1, 3) == Locator_1.DEFAULT_LANGUAGE && (url.length == 3 || url.charAt(3) == delimiter)) {
-            return "/" + url.slice(4);
-        }
         if (match.controllerInUrl && req.action == Locator_1.DEFAULT_ACTION) {
             let query = $url.parse(url).query || "";
             if (query)
@@ -496,9 +510,7 @@ class Application {
                 redirTo = req.controller;
             }
             if (GLOBALIZATION_ENABLED) {
-                redirTo = (req.language == Locator_1.DEFAULT_LANGUAGE
-                    ? ""
-                    : req.language + (redirTo ? delimiter : "")) + redirTo;
+                redirTo = req.locale + (redirTo ? delimiter : "") + redirTo;
             }
             return "/" + redirTo + query;
         }
@@ -509,17 +521,21 @@ class Application {
         let form = new $formidable.IncomingForm();
         form.uploadDir = Jumbo.UPLOAD_DIR;
         form.keepExtensions = true;
-        let maxPostDataSize = Jumbo.config.maxPostDataSize || 5e6;
         return await new Promise((resolve, reject) => {
             form.on("progress", async () => {
-                if (form.bytesExpected > maxPostDataSize) {
-                    end = true;
-                    form.emit("error", "The post data received is too big");
-                    await this.displayError(req.request, res.response, {
-                        status: 413,
-                        message: "The post data received is too big"
-                    });
-                    req.request.connection.destroy();
+                try {
+                    if (form.bytesExpected > MAX_POST_DATA_SIZE) {
+                        end = true;
+                        form.emit("error", "The post data received is too big");
+                        await this.displayError(req.request, res.response, {
+                            status: 413,
+                            message: "The post data received is too big"
+                        });
+                        req.request.connection.destroy();
+                    }
+                }
+                catch (e) {
+                    reject(e);
                 }
             });
             form.parse(req.request, (err, fields, files) => {
@@ -607,9 +623,10 @@ class Application {
             return res.response.end("");
         }
         if (actionResult.constructor == ViewResult_1.ViewResult) {
+            actionResult.data.lang = controller.request.locale.slice(0, 2);
             actionResult.data._context = actionResult;
             actionResult.messages = actionResult.data.clientMessages = (controller.crossRequestData[CLIENT_MESSAGE_ID] || {});
-            actionResult.lang = controller.request.language;
+            actionResult.locale = controller.request.locale;
             await this.prepareView(controller, req, res, actionResult);
             if (JUMBO_DEBUG_MODE) {
                 console.log("[DEBUG] Application.afterAction() after prepareView call");
@@ -657,8 +674,13 @@ class Application {
                     if (err) {
                         return reject(err);
                     }
-                    this.sendView(content, res, controller);
-                    resolve();
+                    try {
+                        this.sendView(content, res, controller);
+                        resolve();
+                    }
+                    catch (e) {
+                        reject(e);
+                    }
                 });
             });
         }
@@ -674,13 +696,18 @@ class Application {
         }
         return await new Promise((resolve, reject) => {
             $fs.readFile(tplCacheFile, "utf-8", async (err, content) => {
-                if (err) {
-                    await this.compileAndRenderView(viewResult, req, res, controller, true, tplCacheFile);
-                    return resolve();
+                try {
+                    if (err) {
+                        await this.compileAndRenderView(viewResult, req, res, controller, true, tplCacheFile);
+                        return resolve();
+                    }
+                    let tpl = await this.templateAdapter.renderPreCompiled(content, viewResult.data, controller);
+                    this.sendView(tpl, res, controller);
+                    resolve();
                 }
-                let tpl = await this.templateAdapter.renderPreCompiled(content, viewResult.data, controller);
-                this.sendView(tpl, res, controller);
-                resolve();
+                catch (e) {
+                    reject(e);
+                }
             });
         });
     }

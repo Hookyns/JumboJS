@@ -3,6 +3,8 @@
  * Written by Roman Jámbor ©
  */
 
+import {RequestException} from "../exceptions/RequestException";
+
 if (Jumbo.config.jumboDebugMode) {
 	console.log("[DEBUG] REQUIRE: Locator");
 }
@@ -36,7 +38,6 @@ const Method = {
 
 //region Consts
 
-export const DEFAULT_LANGUAGE = Jumbo.config.globalization.defaultLanguage;
 const GLOBALIZATION_ENABLED = Jumbo.config.globalization.enabled;
 export const DEFAULT_CONTROLLER = "Home";
 export const DEFAULT_ACTION = "index";
@@ -54,6 +55,8 @@ const SQUARE_BRACKET_REGEX = /[\[\]]/g;
 const LOCATION_ALL_SLASHES_REGEX= /\//g;
 let DELIMITER_REGEX = LOCATION_ALL_SLASHES_REGEX; // Filled from setDelimiter
 let controllerFactory: ControllerFactory = null; // Set from get instance();
+const ONLY_LOCALE_REGEX = /^[a-z]{2}-[A-Z]{2}$/;
+const LOCALE_OPT_COUNTRY_REGEX = /[a-z]{2}(-[A-Z]{2})?/;
 
 //endregion
 
@@ -385,7 +388,7 @@ export class Locator
 			baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
 		}
 
-		if (lang && lang != DEFAULT_LANGUAGE && GLOBALIZATION_ENABLED)
+		if (lang && GLOBALIZATION_ENABLED)
 		{
 			baseUrl += lang + this.delimiter;
 		}
@@ -467,7 +470,7 @@ export class Locator
 		action = action.toLowerCase();
 		controller = controller.toLowerCase();
 
-		const useLang = GLOBALIZATION_ENABLED && lang && lang != DEFAULT_LANGUAGE;
+		const useLang = GLOBALIZATION_ENABLED && lang;
 		lang = (lang || "").toLowerCase();
 
 		// Remove optional parameters -> remove brackets
@@ -513,10 +516,25 @@ export class Locator
 		let url = request.url.replace(DELIMITER_REGEX, "/"); // replace custom delimiters by slashes
 		let parse = $url.parse(url);
 		url = parse.pathname.slice(1); // Slice, remove first slash
+
+		if (parse.pathname == "/") // empty, only slash
+		{
+			let lang = (
+				(<string>request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX)
+				|| ["en-US"]
+			)[0];
+
+			return <any>new RequestException(
+				"No locale specified",
+				301, //permanent
+				false,
+				"/" + lang + (parse.query || ""));
+		}
+
 		let subApp = this.getSubAppFromRequest(request);
 
 		// Test empty URL - default ctrl and action
-		let emptyLocation = this.emptyLocationMatch(parse, subApp);
+		let emptyLocation = this.emptyLocationMatch(parse, subApp, request);
 		if (emptyLocation) return emptyLocation;
 
 		let match: RegExpMatchArray;
@@ -540,7 +558,7 @@ export class Locator
 				? location.action
 				: (matchedAction || DEFAULT_ACTION),
 			params: $object.clone(location.params), // add predefined parameters
-			language: GLOBALIZATION_ENABLED ? (match[1] || DEFAULT_LANGUAGE) : DEFAULT_LANGUAGE,
+			locale: match[1],
 			actionInUrl: !!matchedAction,
 			controllerInUrl: !!matchedController
 		};
@@ -611,28 +629,23 @@ export class Locator
 	 *
 	 * @param {$qs.UrlWithStringQuery} parse
 	 * @param {string} subApp
+	 * @param {$http.IncomingMessage} request
 	 * @returns {ILocatorMatch}
 	 */
-	private emptyLocationMatch(parse: any, subApp: string): ILocatorMatch
+	private emptyLocationMatch(parse: any, subApp: string, request: $http.IncomingMessage): ILocatorMatch
 	{
-		let emptyPath = parse.pathname == "/";
+		let localeMatch = parse.pathname.slice(1).match(ONLY_LOCALE_REGEX);
 
-		// If just slash
-		if (emptyPath/* || parse.pathname.length == 3*/)
-		{ // / or eg. /en - controller must have at least 3 characters
-			// should be validate with regex but it's gonna be taken as language so jung language will have bad format
-			// user catch that and show error, that given language doesn't exists
-			let lang = /*parse.pathname.slice(1) ||*/DEFAULT_LANGUAGE;
-
+		// If just locale
+		if (localeMatch)
+		{
 			return {
 				location: this.locations.get(DEFAULT_LOCATION_NAME),
 				subApp: subApp,
 				controller: DEFAULT_CONTROLLER,
 				action: DEFAULT_ACTION,
 				params: $qs.parse(parse.query),
-				language: lang,
-				// shouldCheck: false,
-				// hasParams: false,
+				locale: localeMatch[0],
 				actionInUrl: false,
 				controllerInUrl: false
 			};
@@ -739,25 +752,10 @@ export class Locator
 			location = "[$" + LOCATION_LANG_VARIABLE_NAME + "[/]]" + location; // There must be slash after language but just optional cuz URL can be just '/en'
 		}
 
-		// location = "^" + location;
-
 		// proc optional part
 		location = location
 			.replace(/\[/g, "(?:")
 			.replace(/]/g, ")?");
-
-		// // Replace location delmiter with registered delimiter
-		// if (this.delimiter != "/")
-		// {
-		// 	// var delimiter = this.delimiter;
-		// 	//
-		// 	// if (["\\", ".", "*", "?", "+", "|", "(", ")", "[", "]", "{", "}"].indexOf(delimiter) != 1) {
-		// 	// 	delimiter = "\\" + delimiter;
-		// 	// }
-		//
-		// 	// All locations should "/" as delimiter. But in real urls there will be specified delimiters
-		// 	location = location.replace(/\//g, this.delimiter);
-		// }
 
 		// proc variables
 		loc.locationMatcher = new RegExp("^" + location.replace(LOCATION_PARAM_REGEX, (_, varName) => {
@@ -765,7 +763,7 @@ export class Locator
 
 			if (varName == LOCATION_LANG_VARIABLE_NAME)
 			{
-				return "([a-z]{2})";
+				return "([a-z]{2}-[A-Z]{2})";
 			}
 
 			if (varName == LOCATION_CTRL_VARIABLE_NAME)

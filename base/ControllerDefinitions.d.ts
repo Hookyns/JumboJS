@@ -27,9 +27,9 @@ declare interface IViewContext
 	view: any;
 
 	/**
-	 * Language
+	 * Locale
 	 */
-	lang: string;
+	locale: string;
 
 	/**
 	 * Should be just raw (not rendered) template returned?

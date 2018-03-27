@@ -24,7 +24,7 @@ if ($cluster.isMaster) {
  * Base project directory
  * @type {string}
  */
-const PROJECT_DIR = $path.dirname(require.main.filename);
+const PROJECT_DIR = $path.dirname(require.main.filename).toLowerCase();
 
 /**
  * Number of milisecond in day
@@ -69,9 +69,9 @@ const Jumbo: JumboNamespace = {
 	/** @type {defaultConfig} */
 	config: {},
 	CONFIG_PATH: $path.join(PROJECT_DIR, "config.js"),
-	CFG_PATH: $path.join(__dirname, "config.js"),
+	CFG_PATH: $path.join(__dirname, "config.js").toLowerCase(),
 	BASE_DIR: PROJECT_DIR,
-	CORE_DIR: __dirname,
+	CORE_DIR: __dirname.toLowerCase(),
 	PUBLIC_DIR: $path.join(PROJECT_DIR, "public"),
 	APP_DIR: $path.join(PROJECT_DIR, "app"),
 	SUB_APP_DIR: $path.join(PROJECT_DIR, "app", "sub-apps"),
@@ -295,7 +295,7 @@ class Loader {
 			&& this.isInConfig("deployment")
 			&& this.isInConfig("debugMode")
 			&& this.isInConfig("DOSPrevention", "enabled", "blockTime", "maxRequestPerIP")
-			&& this.isInConfig("globalization", "enabled", "defaultLanguage")
+			&& this.isInConfig("globalization", "enabled")
 		) {
 			Jumbo.config = ObjectUtils.freeze(this.config, 2);
 		} else {

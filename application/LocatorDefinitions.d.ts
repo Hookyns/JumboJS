@@ -112,9 +112,9 @@ declare interface ILocatorMatch {
 	params: {[key: string]: any};
 
 	/**
-	 * Requested language code
+	 * Requested locale code
 	 */
-	language: string;
+	locale: string;
 
 	// /**
 	//  * Field holding true if URL should be checked for long format

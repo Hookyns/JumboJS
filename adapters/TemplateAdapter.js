@@ -5,9 +5,12 @@
 
 const {Jumplate} = require("jumbo-template");
 
-if (Jumbo.config.jumboDebugMode) {
-	Jumplate.debugMode = true;
-}
+//region Template setup
+
+Jumplate.debugMode = Jumbo.config.debugMode;
+// Jumplate.setTimeZone("UTC");
+
+//endregion
 
 //region Helpers
 
@@ -15,17 +18,14 @@ if (Jumbo.config.jumboDebugMode) {
  * LINK helper
  * Create application link
  */
-Jumplate.registerHelper("link", function (controller, action, params = {}, lang) {
-	if (!lang) {
-		lang = this.request.language;
+Jumplate.registerHelper("link", function (controller, action, params = {}, locale) {
+	if (!locale) {
+		locale = this.request.locale;
 	}
-
-	// return Jumbo.Application.Locator.prototype.generateUrl.call(Jumbo.Application.Locator.instance,
-	// 	controller, action, slashParams, queryParams, null, lang);
 
 	return this.url.action(action, controller)
 		.params(params)
-		.language(lang)
+		.locale(locale)
 		.getUrl();
 });
 
@@ -33,19 +33,16 @@ Jumplate.registerHelper("link", function (controller, action, params = {}, lang)
  * APPLINK helper
  * Create application link targeted to subbapp
  */
-Jumplate.registerHelper("applink", function (subApp, controller, action, params = {}, lang) {
-	if (!lang) {
-		lang = this.request.language;
+Jumplate.registerHelper("applink", function (subApp, controller, action, params = {}, locale) {
+	if (!locale) {
+		locale = this.request.locale;
 	}
 
 	return this.url.action(action, controller)
 		.subApp(subApp)
+		.locale(locale)
 		.params(params)
-		.language(lang)
 		.getUrl();
-
-	// return Jumbo.Application.Locator.prototype.generateUrl.call(Jumbo.Application.Locator.instance,
-	// 	controller, action, slashParams, queryParams, subApp, lang);
 });
 
 /**
@@ -72,9 +69,10 @@ Jumplate.registerLocalizator(function (key) {
  */
 const TemplateAdapter = {
 
-	render: async function render(templatePath, layoutPath, dynamicLayout, data, context) {
+	render: async function render(templatePath, layoutPath, dynamicLayout, data, context/*: Controller*/) {
 		return await new Promise((resolve, reject) => {
 			let template = new Jumplate(null, templatePath, dynamicLayout || null, layoutPath);
+			template.setLocale(context.request.locale);
 			template.context = context;
 			template.compile(function (err) {
 				if (err) {
@@ -97,7 +95,8 @@ const TemplateAdapter = {
 			let template = new Jumplate(null, templatePath, dynamicLayout || null, layoutPath);
 			template.compile(function (err, preCompiledTemplate) {
 				if (err) {
-					return reject(err);
+					reject(err);
+					return;
 				}
 
 				resolve(preCompiledTemplate);
@@ -108,6 +107,7 @@ const TemplateAdapter = {
 	renderPreCompiled: async function renderPreCompiled(compiledTemplate, data, context) {
 		return new Promise((resolve, reject) => {
 			let template = Jumplate.fromCache(compiledTemplate);
+			template.setLocale(context.request.locale);
 			template.context = context;
 			template.render(data, function (err, output) {
 				if (err) {
@@ -122,7 +122,7 @@ const TemplateAdapter = {
 	/**
 	 * Extension of template files
 	 */
-	extension: ".cshtml",
+	extension: ".jshtml",
 
 	/**
 	 * You implement preCompile and renderPreCompiled methods

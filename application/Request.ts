@@ -91,9 +91,9 @@ export class Request
 	sessionId: string;
 
 	/**
-	 * Reuested language
+	 * Requested locale
 	 */
-	language: string;
+	locale: string;
 
 	/**
 	 * Time when was request made

@@ -45,6 +45,7 @@ const CPU_COUNT = !Jumbo.config.clustering.numberOfWorkers
 	: Jumbo.config.clustering.numberOfWorkers;
 const BEFORE_ACTION_NAME = "beforeActions";
 let CAN_USE_CACHE = false;
+const MAX_POST_DATA_SIZE = Jumbo.config.maxPostDataSize;
 
 //endregion
 
@@ -155,7 +156,8 @@ export class Application
 		callback: (error: Error,
 			readStream: $fs.ReadStream,
 			mime: string,
-			size: number) => void) => void;
+			size: number,
+			headers?: { [key: string]: any }) => void) => void;
 
 	/**
 	 * Template adapter
@@ -297,6 +299,7 @@ export class Application
 
 		this.serverIsReady = true;
 		this.initClustering();
+		this.setErrorHandlingEvents();
 	}
 
 	//endregion
@@ -463,6 +466,20 @@ export class Application
 	}
 
 	/**
+	 * Set process event handler for unhandled errors
+	 */
+	private setErrorHandlingEvents()
+	{
+		process.on("uncaughtException", function (err) {
+			Log.error(err.message + "\n" + err.stack);
+			process.exit(1);
+		}).on("unhandledRejection", function (err) {
+			Log.error("Unhandled rejection: " + err.message + "\n" + err.stack);
+			process.exit(1);
+		})
+	}
+
+	/**
 	 * Initiate application clustering
 	 * @private
 	 */
@@ -488,13 +505,7 @@ export class Application
 		}
 		else
 		{
-			process.on("uncaughtException", function (err) {
-				Log.error(err.message + "\n" + err.stack);
-				process.exit(1)
-			}).on("unhandledRejection", function (err) {
-				Log.error("Unhandled rejection: " + err.message + "\n" + err.stack);
-				process.exit(1)
-			}).on("message", (message) => {
+			process.on("message", (message) => {
 				this.clusterWorkerOnMessage(message);
 			});
 		}
@@ -744,22 +755,36 @@ export class Application
 		{
 			let url = decodeURI(request.url);
 
-			return await new Promise<boolean>((resolve) => {
-				this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size) => {
-					if (error)
+			return await new Promise<boolean>((resolve, reject) => {
+				this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size, headers) => {
+					try
 					{
-						this.displayError(request, response, {
-							status: 404,
-							message: "File '" + url + "' error. " + error.message
-						});
+						if (error)
+						{
+							this.displayError(request, response, {
+								status: 404,
+								message: "File '" + url + "' error. " + error.message
+							});
+							return resolve(false);
+						}
+
+						Log.line("Streaming static file '" + url + "'.", LogTypes.Http, LogLevels.Talkative);
+
+						if (!headers || headers.constructor != Object)
+						{
+							headers = {
+								"Content-Type": mime,
+								"Content-Length": size,
+								"Cache-Control": "public, max-age=43200" // 12h
+							};
+						}
+
+						response.writeHead(200, headers);
+						fileStream.pipe(response);
 						return resolve(false);
+					} catch (e) {
+						reject(e);
 					}
-
-					Log.line("Streaming static file '" + url + "'.", LogTypes.Http, LogLevels.Talkative);
-
-					response.writeHead(200, {"Content-Type": mime, "Content-Length": size});
-					fileStream.pipe(response);
-					return resolve(false);
 				});
 			});
 		}
@@ -934,22 +959,6 @@ export class Application
 		// if exit() wasn't called
 		throw new Error(`Action '${jRequest.actionFullName}'`
 			+ ` in controller '${jRequest.controllerFullName}' wasn't exited.`);
-
-		// //noinspection JSAccessibilityCheck
-		// Jumbo.Application.Request.buildRequest(request, requestBeginTime, (err, req) => {
-		// 	if (DEBUG_MODE)
-		// 	{
-		// 		console.log("[DEBUG] Application.processRequest request builded by Application.processRequest()",
-		// err); }  if (err) { if (err instanceof Jumbo.Exceptions.UrlIsNotValidException) { // Check if url ends with
-		// slash if (request.url != "/" && request.url.slice(-1) == "/") { Log.line("Requested url is not valid - ends
-		// with slash => redirect", LogTypes.Http, LogLevels.Talkative); this.redirectResponse(response,
-		// request.url.slice(0, request.url.length - 1)); return; }  this.displayError(request, response, { status:
-		// 404, message: "Requested url '" + request.headers.host + request.url + "' is not valid. Does not match any
-		// Locator's location" }); return; } else if (err instanceof
-		// Jumbo.Exceptions.ControllerOrActionDoesntExistsException) { this.displayError(request, response, { status:
-		// 404, message: "Requested url '" + request.headers.host + request.url + "' is not valid. " + err.message });
-		// return; }  this.displayError(request, response, { status: 500, message: "Unknown error ocurs in
-		// Application.processRequest's callback" }); return; }   });
 	}
 
 	/**
@@ -1050,7 +1059,7 @@ export class Application
 		req._bindLocation(match.location, target.subApp, target.controller, target.action, match.params);
 
 		req.beginTime = requestBeginTime;
-		req.language = match.language;
+		req.locale = match.locale;
 
 		return req;
 	}
@@ -1066,14 +1075,6 @@ export class Application
 		let url = req.request.url;
 		let delimiter = (<any>this.locator).delimiter;
 
-		// If default language in URL -> redirect to URL without language
-		if (GLOBALIZATION_ENABLED && url.slice(1, 3) == DEFAULT_LANGUAGE && (
-				url.length == 3 || url.charAt(3) == delimiter
-			))
-		{
-			return "/" + url.slice(4);
-		}
-
 		if (match.controllerInUrl && req.action == DEFAULT_ACTION)
 		{
 			let query = $url.parse(url).query || "";
@@ -1087,10 +1088,7 @@ export class Application
 
 			if (GLOBALIZATION_ENABLED)
 			{
-				redirTo = (req.language == DEFAULT_LANGUAGE
-						? ""
-						: req.language + (redirTo ? delimiter : "")
-				) + redirTo;
+				redirTo = req.locale + (redirTo ? delimiter : "") + redirTo;
 			}
 
 			return "/" + redirTo + query;
@@ -1112,20 +1110,24 @@ export class Application
 		let form = new $formidable.IncomingForm();
 		form.uploadDir = Jumbo.UPLOAD_DIR;
 		form.keepExtensions = true;
-		let maxPostDataSize = Jumbo.config.maxPostDataSize || 5e6; // TODO: create procedure for parsing config and
-	                                                               // setting default values for notexisting properties
+
 		return await new Promise<IBody>((resolve, reject) => {
 			// check for max file size limit
 			form.on("progress", async () => {
-				if (form.bytesExpected > maxPostDataSize)
+				try
 				{
-					end = true;
-					form.emit("error", "The post data received is too big");
-					await this.displayError(req.request, res.response, {
-						status: 413,
-						message: "The post data received is too big"
-					});
-					req.request.connection.destroy();
+					if (form.bytesExpected > MAX_POST_DATA_SIZE)
+					{
+						end = true;
+						form.emit("error", "The post data received is too big");
+						await this.displayError(req.request, res.response, {
+							status: 413,
+							message: "The post data received is too big"
+						});
+						req.request.connection.destroy();
+					}
+				} catch (e) {
+					reject(e);
 				}
 			});
 
@@ -1172,6 +1174,7 @@ export class Application
 		return ctrl;
 	}
 
+	// noinspection JSMethodCanBeStatic
 	/**
 	 * Initialize controller and init action call
 	 * @param {Request} req
@@ -1303,9 +1306,10 @@ export class Application
 
 		if (actionResult.constructor == ViewResult) // actionResult.constructor == ViewResult should be 6x faster but it returns FALSE sometimes, WTF?
 		{
+			actionResult.data.lang = controller.request.locale.slice(0, 2);
 			actionResult.data._context = actionResult;
 			actionResult.messages = actionResult.data.clientMessages = (controller.crossRequestData[CLIENT_MESSAGE_ID] || {});
-			actionResult.lang = controller.request.language;
+			actionResult.locale = controller.request.locale;
 
 			await this.prepareView(controller, req, res, actionResult);
 
@@ -1409,8 +1413,14 @@ export class Application
 					{
 						return reject(err);
 					}
-					this.sendView(content, res, controller);
-					resolve();
+
+					try
+					{
+						this.sendView(content, res, controller);
+						resolve();
+					} catch (e) {
+						reject(e);
+					}
 				});
 			});
 		}
@@ -1437,15 +1447,22 @@ export class Application
 
 		return await new Promise((resolve, reject) => {
 			$fs.readFile(tplCacheFile, "utf-8", async (err, content) => {
-				if (err)
-				{ // No cache exists - do complete (compile and) render
-					await this.compileAndRenderView(viewResult, req, res, controller, true, tplCacheFile);
-					return resolve();
-				}
+				try
+				{
+					if (err)
+					{ // No cache exists - do complete (compile and) render
+						await this.compileAndRenderView(viewResult, req, res, controller, true, tplCacheFile);
+						return resolve();
+					}
 
-				let tpl = await this.templateAdapter.renderPreCompiled(content, viewResult.data, controller);
-				this.sendView(tpl, res, controller);
-				resolve();
+					let tpl = await this.templateAdapter.renderPreCompiled(content, viewResult.data, controller);
+					this.sendView(tpl, res, controller);
+					resolve();
+				}
+				catch (e)
+				{
+					reject(e);
+				}
 			});
 		});
 	}
@@ -1752,7 +1769,7 @@ class ApplicationActivator extends Application
 
 // Must be here at bottom cuz of cycle dependencies
 import {
-	Locator, END_DELIMITER_TRIM_REGEX, DEFAULT_LANGUAGE, DEFAULT_ACTION, DEFAULT_CONTROLLER
+	Locator, END_DELIMITER_TRIM_REGEX, DEFAULT_ACTION, DEFAULT_CONTROLLER
 } from "jumbo-core/application/Locator";
 import {ControllerFactory, MAIN_SUBAPP_NAME} from "jumbo-core/application/ControllerFactory";
 import {DIContainer} from "jumbo-core/ioc/DIContainer";

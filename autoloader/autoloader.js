@@ -27,6 +27,41 @@ function toCamelCase(fileName) {
 	});
 }
 
+let watchAppDir = async function (file, ns) {
+	if (file.slice(0, Jumbo.APP_DIR.length) === Jumbo.APP_DIR) {
+		// Enable watching over app directory - reload after some change
+		let nextChangeAfter = null;
+
+		$fs.watch(file, function (event, fileName) {
+			if (fileName.slice(-3) !== ".js") return;
+
+			// Cuz some systems emit more messages for one event
+			setTimeout(async () => {
+				if (nextChangeAfter !== null && (new Date()).getTime() < nextChangeAfter) return;
+				nextChangeAfter = new Date().getTime() + 1000;
+
+				let classPath = $path.join(file, fileName);
+				let cls = fileName.replace(EXTENSION_REGEX, "");
+
+				let inNS = ns.hasOwnProperty(cls);
+
+				// Check if changed file was deleted or not
+				let removed = inNS ? await new Promise((c) => {
+					$fs.access(classPath, (err) => {
+						c(!!err)
+					});
+				}) : false;
+
+				// // New file added - reload process
+				$clusterCmds.invoke($clusterCmds.Commands.RestartWorker);
+
+				Jumbo.Logging.Log.line(`File ${classPath} ${removed ? "removed" : (inNS ? "changed" : "added")} - reload`,
+					Jumbo.Logging.Log.LogTypes.Std, Jumbo.Logging.Log.LogLevels.Talkative);
+			}, 1000);
+		});
+	}
+};
+
 // Create function for recursive walk-through
 function loadDir(dir) {
 	let result = {};
@@ -45,39 +80,7 @@ function loadDir(dir) {
 				let ns = loadDir(file);
 				name = toCamelCase(fileName);
 				result[name] = ns;
-
-				if ($cluster.isWorker && file.slice(0, Jumbo.APP_DIR.length) === Jumbo.APP_DIR) {
-					// Enable watching over app directory - reload after some change
-					let nextChangeAfter = null;
-
-					$fs.watch(file, function (event, fileName) {
-						if (fileName.slice(-3) !== ".js") return;
-
-						// Cuz some systems emit more messages for one event
-						setTimeout(async() => {
-							if (nextChangeAfter !== null && (new Date()).getTime() < nextChangeAfter) return;
-							nextChangeAfter = new Date().getTime() + 1000;
-
-							let classPath = $path.join(file, fileName);
-							let cls = fileName.replace(EXTENSION_REGEX, "");
-
-							let inNS = ns.hasOwnProperty(cls);
-
-							// Check if changed file was deleted or not
-							let removed = inNS ? await new Promise((c) => {
-								$fs.access(classPath, (err) => {
-									c(!!err)
-								});
-							}) : false;
-
-							// // New file added - reload process
-							$clusterCmds.invoke($clusterCmds.Commands.RestartWorker);
-
-							Jumbo.Logging.Log.line(`File ${classPath} ${removed ? "removed" : (inNS ? "changed" : "added")} - reload`,
-								Jumbo.Logging.Log.LogTypes.Std, Jumbo.Logging.Log.LogLevels.Talkative);
-						}, 1000);
-					});
-				}
+				if ($cluster.isWorker) watchAppDir(file, ns);
 			} else if (stat.isFile()) {
 				if (FILE_NAME_REGEX.test(fileName)) {
 					let cls = fileName.replace(EXTENSION_REGEX, "");

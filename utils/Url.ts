@@ -31,7 +31,7 @@ export class Url
 			controller: request.controller,
 			subApp: request.subApp,
 			location: request.location.locationName,
-			lang: request.language,
+			locale: request.locale,
 			params: {}
 		};
 	}
@@ -89,13 +89,13 @@ export class Url
 	}
 
 	/**
-	 * Set language
-	 * @param {string} language
+	 * Set locale
+	 * @param {string} locale
 	 * @returns {Url}
 	 */
-	public language(language: any): Url
+	public locale(locale: any): Url
 	{
-		this.options.lang = language;
+		this.options.locale = locale;
 		return this;
 	}
 
@@ -120,11 +120,11 @@ export class Url
 
 		if (this.options.location)
 		{
-			return Locator.instance.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
+			return Locator.instance.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
 		}
 		else
 		{
-			return Locator.instance.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
+			return Locator.instance.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
 		}
 	}
 

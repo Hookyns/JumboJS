@@ -14,7 +14,7 @@ export declare class Request {
     body: IBody;
     noCache: boolean;
     sessionId: string;
-    language: string;
+    locale: string;
     beginTime: number;
     method: string;
     constructor(request: $http.IncomingMessage);

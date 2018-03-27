@@ -30,6 +30,7 @@ export declare class Application {
     getClientIP(request: $http.IncomingMessage): string;
     static exit(): void;
     private beforeRunWhenReadyCallback();
+    private setErrorHandlingEvents();
     private initClustering();
     private clusterOnExit(worker, code, signal);
     private clusterWorkerOnMessage(message);

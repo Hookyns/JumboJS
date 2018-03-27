@@ -11,7 +11,7 @@ class Url {
             controller: request.controller,
             subApp: request.subApp,
             location: request.location.locationName,
-            lang: request.language,
+            locale: request.locale,
             params: {}
         };
     }
@@ -35,8 +35,8 @@ class Url {
         this.options.params = params;
         return this;
     }
-    language(language) {
-        this.options.lang = language;
+    locale(locale) {
+        this.options.locale = locale;
         return this;
     }
     location(location) {
@@ -46,10 +46,10 @@ class Url {
     getUrl() {
         const opt = this.options;
         if (this.options.location) {
-            return Locator_1.Locator.instance.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
+            return Locator_1.Locator.instance.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
         }
         else {
-            return Locator_1.Locator.instance.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.lang);
+            return Locator_1.Locator.instance.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
         }
     }
 }

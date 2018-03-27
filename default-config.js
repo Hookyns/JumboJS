@@ -182,22 +182,15 @@ const ApplicationConfig = {
 	},
 
 	/**
-	 * Allows you to use more languages (defined in URL right after first slash; eg. domain.tld/en/page/article/1)
+	 * Allows you to use more locales (defined in URL right after first slash; eg. domain.tld/en-US/page/article/1)
 	 */
 	globalization: {
 		/**
-		 * Allow using languages
+		 * Allow using locales
 		 * @type {boolean}
 		 * @default false
 		 */
-		enabled: false,
-
-		/**
-		 * Default language (used for URL without language)
-		 * @type {string}
-		 * @default en
-		 */
-		defaultLanguage: "en"
+		enabled: false
 	},
 
 	/**

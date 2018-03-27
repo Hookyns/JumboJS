@@ -1,7 +1,7 @@
 export declare class ViewResult implements IViewContext {
     errors: Array<any>;
     messages: Array<IMessage>;
-    lang: string;
+    locale: string;
     view: string;
     data: any;
     rawTemplate: boolean;

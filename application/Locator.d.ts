@@ -1,5 +1,4 @@
 import * as $http from "http";
-export declare const DEFAULT_LANGUAGE: any;
 export declare const DEFAULT_CONTROLLER = "Home";
 export declare const DEFAULT_ACTION = "index";
 export declare let END_DELIMITER_TRIM_REGEX: RegExp;
@@ -29,7 +28,7 @@ export declare class Locator {
     parseUrl(request: $http.IncomingMessage): ILocatorMatch;
     addUrlAlias(url: any, alias: any): void;
     getUrlForAlias(alias: any): string;
-    private emptyLocationMatch(parse, subApp);
+    private emptyLocationMatch(parse, subApp, request);
     private extractSubApp(request);
     private findLocationForUrl(url, subApp);
     private getSubAppFromRequest(request);

@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const RequestException_1 = require("../exceptions/RequestException");
 if (Jumbo.config.jumboDebugMode) {
     console.log("[DEBUG] REQUIRE: Locator");
 }
@@ -17,7 +18,6 @@ const Method = {
     GET: "GET",
     DELETE: "DELETE"
 };
-exports.DEFAULT_LANGUAGE = Jumbo.config.globalization.defaultLanguage;
 const GLOBALIZATION_ENABLED = Jumbo.config.globalization.enabled;
 exports.DEFAULT_CONTROLLER = "Home";
 exports.DEFAULT_ACTION = "index";
@@ -34,6 +34,8 @@ const SQUARE_BRACKET_REGEX = /[\[\]]/g;
 const LOCATION_ALL_SLASHES_REGEX = /\//g;
 let DELIMITER_REGEX = LOCATION_ALL_SLASHES_REGEX;
 let controllerFactory = null;
+const ONLY_LOCALE_REGEX = /^[a-z]{2}-[A-Z]{2}$/;
+const LOCALE_OPT_COUNTRY_REGEX = /[a-z]{2}(-[A-Z]{2})?/;
 function locationParamReplacer(varName, lang, useLang, controller, action, params, location) {
     if (varName == LOCATION_LANG_VARIABLE_NAME) {
         if (!useLang)
@@ -155,7 +157,7 @@ class Locator {
         if (host || protocol || subApp) {
             baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
         }
-        if (lang && lang != exports.DEFAULT_LANGUAGE && GLOBALIZATION_ENABLED) {
+        if (lang && GLOBALIZATION_ENABLED) {
             baseUrl += lang + this.delimiter;
         }
         let queryParamsLength = Object.keys(queryParams).length;
@@ -198,7 +200,7 @@ class Locator {
         }
         action = action.toLowerCase();
         controller = controller.toLowerCase();
-        const useLang = GLOBALIZATION_ENABLED && lang && lang != exports.DEFAULT_LANGUAGE;
+        const useLang = GLOBALIZATION_ENABLED && lang;
         lang = (lang || "").toLowerCase();
         let loc = location.location.replace(SQUARE_BRACKET_REGEX, "");
         const langInLoc = loc.indexOf("$" + LOCATION_LANG_VARIABLE_NAME) !== -1;
@@ -224,8 +226,13 @@ class Locator {
         let url = request.url.replace(DELIMITER_REGEX, "/");
         let parse = $url.parse(url);
         url = parse.pathname.slice(1);
+        if (parse.pathname == "/") {
+            let lang = ((request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX)
+                || ["en-US"])[0];
+            return new RequestException_1.RequestException("No locale specified", 301, false, "/" + lang + (parse.query || ""));
+        }
         let subApp = this.getSubAppFromRequest(request);
-        let emptyLocation = this.emptyLocationMatch(parse, subApp);
+        let emptyLocation = this.emptyLocationMatch(parse, subApp, request);
         if (emptyLocation)
             return emptyLocation;
         let match;
@@ -245,7 +252,7 @@ class Locator {
                 ? location.action
                 : (matchedAction || exports.DEFAULT_ACTION),
             params: $object.clone(location.params),
-            language: GLOBALIZATION_ENABLED ? (match[1] || exports.DEFAULT_LANGUAGE) : exports.DEFAULT_LANGUAGE,
+            locale: match[1],
             actionInUrl: !!matchedAction,
             controllerInUrl: !!matchedController
         };
@@ -270,17 +277,16 @@ class Locator {
     getUrlForAlias(alias) {
         return this.urlAliases[alias];
     }
-    emptyLocationMatch(parse, subApp) {
-        let emptyPath = parse.pathname == "/";
-        if (emptyPath) {
-            let lang = exports.DEFAULT_LANGUAGE;
+    emptyLocationMatch(parse, subApp, request) {
+        let localeMatch = parse.pathname.slice(1).match(ONLY_LOCALE_REGEX);
+        if (localeMatch) {
             return {
                 location: this.locations.get(DEFAULT_LOCATION_NAME),
                 subApp: subApp,
                 controller: exports.DEFAULT_CONTROLLER,
                 action: exports.DEFAULT_ACTION,
                 params: $qs.parse(parse.query),
-                language: lang,
+                locale: localeMatch[0],
                 actionInUrl: false,
                 controllerInUrl: false
             };
@@ -332,7 +338,7 @@ class Locator {
         loc.locationMatcher = new RegExp("^" + location.replace(LOCATION_PARAM_REGEX, (_, varName) => {
             loc.variables.push(varName);
             if (varName == LOCATION_LANG_VARIABLE_NAME) {
-                return "([a-z]{2})";
+                return "([a-z]{2}-[A-Z]{2})";
             }
             if (varName == LOCATION_CTRL_VARIABLE_NAME) {
                 return "([a-zA-Z]{3,})";
