@@ -1,4 +1,8 @@
-# JumboJS
+# JumboJS 
+[![NPM version][npm-version-image]][npm-url] 
+[![MIT License][license-image]][license-url] 
+[![Gitter chat](https://hookyns.github.io/JumboJS-docs/images/gitter.png)](https://gitter.im/JumboJS)
+
 Modern lightweight fast enterprise level MVW framework for Node.js
 
 ! Under development, but ready to use !
