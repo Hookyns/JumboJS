@@ -1,5 +1,5 @@
 # JumboJS 
-[![NPM version][https://img.shields.io/npm/v/jumbo-core.svg?colorB=green&noprocess]][https://www.npmjs.com/package/jumbo-core] 
+[![NPM version](https://img.shields.io/npm/v/jumbo-core.svg?colorB=green)](https://www.npmjs.com/package/jumbo-core) 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Gitter chat](https://hookyns.github.io/JumboJS-docs/images/gitter.png)](https://gitter.im/JumboJS/Lobby)
 
