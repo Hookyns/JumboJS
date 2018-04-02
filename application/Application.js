@@ -15,7 +15,7 @@ const $clusterCmds = require("jumbo-core/cluster/cluster-messaging");
 const fileExtensionToMimeMap = require("jumbo-core/utils/file-extension-to-mime-map");
 const Exception_1 = require("jumbo-core/exceptions/Exception");
 const ViewResult_1 = require("jumbo-core/results/ViewResult");
-const $cfg = require("jumbo-core/config").Configurations;
+const $cfg = require("jumbo-core/config-options").Configurations;
 const USE_HTTPS = Jumbo.config.protocol.protocol === $cfg.Protocols.Https;
 const CLIENT_MESSAGE_ID = Jumbo.Base.Controller.clientMessagesId;
 const GLOBALIZATION_ENABLED = Jumbo.config.globalization.enabled;

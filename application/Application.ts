@@ -24,7 +24,7 @@ import * as fileExtensionToMimeMap from "jumbo-core/utils/file-extension-to-mime
 import {Exception} from "jumbo-core/exceptions/Exception";
 import {ViewResult} from "jumbo-core/results/ViewResult";
 
-const $cfg = require("jumbo-core/config").Configurations;
+const $cfg = require("jumbo-core/config-options").Configurations;
 
 //endregion
 

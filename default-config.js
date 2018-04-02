@@ -1,4 +1,4 @@
-const $cfg = require("jumbo-core/config");
+const $cfg = require("jumbo-core/config-options");
 
 /**
  * @name ApplicationConfig

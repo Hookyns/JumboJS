@@ -5,7 +5,7 @@ const $path = require("path");
 const $cluster = require("cluster");
 const $clusterCmds = require("../cluster/cluster-messaging");
 const $newLine = require("os").EOL;
-const $cfg = require("jumbo-core/config").Configurations;
+const $cfg = require("jumbo-core/config-options").Configurations;
 const config = Jumbo.config;
 var LogTypes;
 (function (LogTypes) {

@@ -15,7 +15,7 @@ import * as $clusterCmds from "../cluster/cluster-messaging";
 //region Consts
 
 const $newLine = require("os").EOL;
-const $cfg = require("jumbo-core/config").Configurations;
+const $cfg = require("jumbo-core/config-options").Configurations;
 const config = Jumbo.config;
 
 /**
