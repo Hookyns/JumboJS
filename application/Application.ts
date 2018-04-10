@@ -782,7 +782,9 @@ export class Application
 						response.writeHead(200, headers);
 						fileStream.pipe(response);
 						return resolve(false);
-					} catch (e) {
+					}
+					catch (e)
+					{
 						reject(e);
 					}
 				});
@@ -1072,26 +1074,23 @@ export class Application
 	 */
 	private checkLongFormatUrl(req: Request, match: ILocatorMatch): string | null
 	{
-		let url = req.request.url;
-		let delimiter = (<any>this.locator).delimiter;
-
-		if (match.controllerInUrl && req.action == DEFAULT_ACTION)
+		if (req.action == DEFAULT_ACTION && match.controllerInUrl)
 		{
+			let url = req.request.url;
 			let query = $url.parse(url).query || "";
 			if (query) query = "?" + query;
-			let redirTo = ""; // just '/'
 
-			if (req.controller != DEFAULT_CONTROLLER)
+			if (req.controller == DEFAULT_CONTROLLER)
 			{
-				redirTo = req.controller; // '/controller'
+				if (GLOBALIZATION_ENABLED) return "/" + req.locale + query;
+				return "/" + query;
 			}
-
-			if (GLOBALIZATION_ENABLED)
+			else if (match.actionInUrl)
 			{
-				redirTo = req.locale + (redirTo ? delimiter : "") + redirTo;
+				let delimiter = (<any>this.locator).delimiter;
+				if (GLOBALIZATION_ENABLED) return "/" + req.locale + delimiter + req.controller + query;
+				return "/" + req.controller + query;
 			}
-
-			return "/" + redirTo + query;
 		}
 
 		return null;
@@ -1126,7 +1125,9 @@ export class Application
 						});
 						req.request.connection.destroy();
 					}
-				} catch (e) {
+				}
+				catch (e)
+				{
 					reject(e);
 				}
 			});
@@ -1418,7 +1419,9 @@ export class Application
 					{
 						this.sendView(content, res, controller);
 						resolve();
-					} catch (e) {
+					}
+					catch (e)
+					{
 						reject(e);
 					}
 				});
@@ -1627,7 +1630,8 @@ export class Application
 		}
 
 		// Write to file
-		$fs.writeFile(tplCacheFile, compiledtemplate, () => { });
+		$fs.writeFile(tplCacheFile, compiledtemplate, () => {
+		});
 	}
 
 	// noinspection JSMethodCanBeStatic
@@ -1685,9 +1689,10 @@ export class Application
 	private async displayError(request: $http.IncomingMessage, response: $http.ServerResponse, errObj)
 	{
 		let ex = errObj.error || errObj;
+
 		let errorObj = {
 			message: errObj.message || ex.message,
-			status: errObj.status || 500,
+			status: errObj.status || ex.statusCode || 500,
 			stack: ex.stack
 		};
 
@@ -1697,7 +1702,7 @@ export class Application
 
 		if (response.finished) return;
 
-		if (DEVELOPMENT_MODE && ex instanceof Error || ex instanceof Exception)
+		if (DEVELOPMENT_MODE && (ex instanceof Error || ex instanceof Exception))
 		{
 			return this.renderException(errorObj.message || ex.message, ex, errorObj.status || 500, request, response);
 		}

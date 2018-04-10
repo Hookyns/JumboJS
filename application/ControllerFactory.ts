@@ -3,6 +3,8 @@
  * Written by Roman Jámbor ©
  */
 
+import {RequestException} from "../exceptions/RequestException";
+
 if (Jumbo.config.jumboDebugMode)
 {
 	console.log("[DEBUG] REQUIRE: ControllerFactory");
@@ -326,10 +328,10 @@ export class ControllerFactory
 		}
 
 		let sa = this.subApp[subId];
-		if (!sa) throw new Error(`Subapp '${subApp}' doesn't exist.`);
+		if (!sa) throw new RequestException(`Subapp '${subApp}' doesn't exist.`);
 
 		let ctrl = sa.controllers[controllerId];
-		if (!ctrl) throw new Error(`Controller '${controller}' of sub-app '${subApp}' doesn't exist.`);
+		if (!ctrl) throw new RequestException(`Controller '${controller}' of sub-app '${subApp}' doesn't exist.`);
 
 		let act = ctrl.actions[actionId] || ctrl.actions[this.getActionId(action)]; // specific methodAction OR general actionAction
 		if (!act && method == undefined)
@@ -338,7 +340,7 @@ export class ControllerFactory
 		}
 		if (!act)
 		{
-			throw new Error(`Action '${actionId}' doesn't exists in controller '${controller}' of sub-app '${subApp}'.`);
+			throw new RequestException(`Action '${actionId}' doesn't exists in controller '${controller}' of sub-app '${subApp}'.`);
 		}
 
 		return {

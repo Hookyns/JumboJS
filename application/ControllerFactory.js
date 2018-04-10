@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const RequestException_1 = require("../exceptions/RequestException");
 if (Jumbo.config.jumboDebugMode) {
     console.log("[DEBUG] REQUIRE: ControllerFactory");
 }
@@ -86,16 +87,16 @@ class ControllerFactory {
         }
         let sa = this.subApp[subId];
         if (!sa)
-            throw new Error(`Subapp '${subApp}' doesn't exist.`);
+            throw new RequestException_1.RequestException(`Subapp '${subApp}' doesn't exist.`);
         let ctrl = sa.controllers[controllerId];
         if (!ctrl)
-            throw new Error(`Controller '${controller}' of sub-app '${subApp}' doesn't exist.`);
+            throw new RequestException_1.RequestException(`Controller '${controller}' of sub-app '${subApp}' doesn't exist.`);
         let act = ctrl.actions[actionId] || ctrl.actions[this.getActionId(action)];
         if (!act && method == undefined) {
             act = this.findAction(ctrl.actions, actionId);
         }
         if (!act) {
-            throw new Error(`Action '${actionId}' doesn't exists in controller '${controller}' of sub-app '${subApp}'.`);
+            throw new RequestException_1.RequestException(`Action '${actionId}' doesn't exists in controller '${controller}' of sub-app '${subApp}'.`);
         }
         return {
             subApp: sa.name,

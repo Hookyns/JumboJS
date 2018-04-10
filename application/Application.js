@@ -499,20 +499,22 @@ class Application {
         return req;
     }
     checkLongFormatUrl(req, match) {
-        let url = req.request.url;
-        let delimiter = this.locator.delimiter;
-        if (match.controllerInUrl && req.action == Locator_1.DEFAULT_ACTION) {
+        if (req.action == Locator_1.DEFAULT_ACTION && match.controllerInUrl) {
+            let url = req.request.url;
             let query = $url.parse(url).query || "";
             if (query)
                 query = "?" + query;
-            let redirTo = "";
-            if (req.controller != Locator_1.DEFAULT_CONTROLLER) {
-                redirTo = req.controller;
+            if (req.controller == Locator_1.DEFAULT_CONTROLLER) {
+                if (GLOBALIZATION_ENABLED)
+                    return "/" + req.locale + query;
+                return "/" + query;
             }
-            if (GLOBALIZATION_ENABLED) {
-                redirTo = req.locale + (redirTo ? delimiter : "") + redirTo;
+            else if (match.actionInUrl) {
+                let delimiter = this.locator.delimiter;
+                if (GLOBALIZATION_ENABLED)
+                    return "/" + req.locale + delimiter + req.controller + query;
+                return "/" + req.controller + query;
             }
-            return "/" + redirTo + query;
         }
         return null;
     }
@@ -789,7 +791,8 @@ class Application {
             this.memoryCacheSize += size;
             this.memoryCacheQueue.push(tplCacheFile);
         }
-        $fs.writeFile(tplCacheFile, compiledtemplate, () => { });
+        $fs.writeFile(tplCacheFile, compiledtemplate, () => {
+        });
     }
     afterTemplateRender(ctrl) {
         ctrl._clearOldCrossRequestData();
@@ -810,14 +813,14 @@ class Application {
         let ex = errObj.error || errObj;
         let errorObj = {
             message: errObj.message || ex.message,
-            status: errObj.status || 500,
+            status: errObj.status || ex.statusCode || 500,
             stack: ex.stack
         };
         Log_1.Log.warning("Error while serving " + request.url + "; Client " + this.getClientIP(request) + "; "
             + errorObj.stack, Log_1.LogTypes.Http);
         if (response.finished)
             return;
-        if (DEVELOPMENT_MODE && ex instanceof Error || ex instanceof Exception_1.Exception) {
+        if (DEVELOPMENT_MODE && (ex instanceof Error || ex instanceof Exception_1.Exception)) {
             return this.renderException(errorObj.message || ex.message, ex, errorObj.status || 500, request, response);
         }
         let errFile = $path.resolve(Jumbo.ERR_DIR, errorObj.status + ".html");

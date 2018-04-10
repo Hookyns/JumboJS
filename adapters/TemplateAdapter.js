@@ -18,7 +18,7 @@ Jumplate.debugMode = Jumbo.config.debugMode;
  * LINK helper
  * Create application link
  */
-Jumplate.registerHelper("link", function (controller, action, params = {}, locale) {
+Jumplate.registerHelper("link", function (action, controller, params = {}, locale) {
 	if (!locale) {
 		locale = this.request.locale;
 	}
@@ -33,7 +33,7 @@ Jumplate.registerHelper("link", function (controller, action, params = {}, local
  * APPLINK helper
  * Create application link targeted to subbapp
  */
-Jumplate.registerHelper("applink", function (subApp, controller, action, params = {}, locale) {
+Jumplate.registerHelper("applink", function (subApp, action, controller, params = {}, locale) {
 	if (!locale) {
 		locale = this.request.locale;
 	}
