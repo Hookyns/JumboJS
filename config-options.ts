@@ -21,4 +21,10 @@ export namespace Configurations {
         Development = 0,
         Production = 1,
     }
+
+    export enum FrameOptions {
+        Disabled = 0,
+        Deny = 1,
+        SameOrigin = 2
+    }
 }

@@ -25,5 +25,11 @@ var Configurations;
         Deployment[Deployment["Development"] = 0] = "Development";
         Deployment[Deployment["Production"] = 1] = "Production";
     })(Deployment = Configurations.Deployment || (Configurations.Deployment = {}));
+    let FrameOptions;
+    (function (FrameOptions) {
+        FrameOptions[FrameOptions["Disabled"] = 0] = "Disabled";
+        FrameOptions[FrameOptions["Deny"] = 1] = "Deny";
+        FrameOptions[FrameOptions["SameOrigin"] = 2] = "SameOrigin";
+    })(FrameOptions = Configurations.FrameOptions || (Configurations.FrameOptions = {}));
 })(Configurations = exports.Configurations || (exports.Configurations = {}));
 //# sourceMappingURL=config-options.js.map

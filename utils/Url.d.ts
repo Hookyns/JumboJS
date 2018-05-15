@@ -1,5 +1,6 @@
 export declare class Url {
     private options;
+    private request;
     constructor(request: Request);
     action(action: string, controller?: string, params?: any): Url;
     controller(controller: string): Url;

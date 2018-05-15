@@ -23,6 +23,7 @@ exports.DEFAULT_CONTROLLER = "Home";
 exports.DEFAULT_ACTION = "index";
 exports.END_DELIMITER_TRIM_REGEX = /[\/]+$/;
 const LOCATION_PARAM_REGEX = /\$([a-z][a-zA-Z]*)/g;
+const LOCATION_URL_BUILDER_PARAM_REGEX = /(\[)?(\/)?\$([a-z][a-zA-Z]*)/g;
 const LOCATION_LANG_VARIABLE_NAME = "globlanguage";
 const LOCATION_CTRL_VARIABLE_NAME = "controller";
 const LOCATION_ACTION_VARIABLE_NAME = "action";
@@ -36,28 +37,28 @@ let DELIMITER_REGEX = LOCATION_ALL_SLASHES_REGEX;
 let controllerFactory = null;
 const ONLY_LOCALE_REGEX = /^[a-z]{2}-[A-Z]{2}$/;
 const LOCALE_OPT_COUNTRY_REGEX = /[a-z]{2}(-[A-Z]{2})?/;
-function locationParamReplacer(varName, lang, useLang, controller, action, params, location) {
+function locationParamReplacer(varName, lang, useLang, controller, action, params, location, isRequired, delimiter = "") {
     if (varName == LOCATION_LANG_VARIABLE_NAME) {
         if (!useLang)
             return "";
-        return lang;
+        return delimiter + lang;
     }
     if (varName == LOCATION_CTRL_VARIABLE_NAME) {
-        if (!controller) {
+        if (!controller && isRequired) {
             throw new Error("This location require controller but you didn't pass any in parameters.");
         }
-        return controller;
+        return controller ? (delimiter + controller) : "";
     }
     if (varName == LOCATION_ACTION_VARIABLE_NAME) {
-        if (!action) {
+        if (!action && isRequired) {
             throw new Error("This location require action but you don't pass any in parameters.");
         }
-        return action;
+        return action ? (delimiter + action) : "";
     }
-    if (params[varName]) {
-        let param = params[varName];
+    let param = params[varName];
+    if (param) {
         delete params[varName];
-        return param;
+        return param ? (delimiter + param) : "";
     }
     if (location.options[varName]) {
         return location.options[varName];
@@ -99,6 +100,9 @@ class Locator {
             });
         }
         return instance;
+    }
+    static get defaultLocationName() {
+        return DEFAULT_LOCATION_NAME;
     }
     setHost(host) {
         this.host = host;
@@ -167,10 +171,10 @@ class Locator {
             return baseUrl;
         }
         else if (action == exports.DEFAULT_ACTION && noParams) {
-            return baseUrl + controller.toLowerCase();
+            return baseUrl + controller;
         }
         else {
-            let url = baseUrl + controller.toLowerCase() + this.delimiter + action.toLowerCase();
+            let url = baseUrl + controller + this.delimiter + action;
             if (!noParams) {
                 if (slashParams.length === 0)
                     url += this.delimiter;
@@ -198,37 +202,51 @@ class Locator {
         if (location.options.action) {
             action = location.options.action;
         }
-        action = action.toLowerCase();
-        controller = controller.toLowerCase();
+        let notVariablesParams = Object.keys(params);
+        if (location.variables.length !== 0) {
+            notVariablesParams = notVariablesParams.filter(param => !location.variables.includes(param));
+        }
+        if (notVariablesParams.length === 0) {
+            if (controller == exports.DEFAULT_CONTROLLER)
+                controller = "";
+            if (action == exports.DEFAULT_ACTION)
+                action = "";
+        }
         const useLang = GLOBALIZATION_ENABLED && lang;
-        lang = (lang || "").toLowerCase();
-        let loc = location.location.replace(SQUARE_BRACKET_REGEX, "");
+        lang = (lang || "");
+        let loc = location.location;
         const langInLoc = loc.indexOf("$" + LOCATION_LANG_VARIABLE_NAME) !== -1;
         let url = loc
-            .replace(LOCATION_PARAM_REGEX, (_, varName) => locationParamReplacer(varName, lang, useLang, controller, action, params, location))
+            .replace(LOCATION_URL_BUILDER_PARAM_REGEX, (_, startOptBracket, delimiter, varName) => {
+            return locationParamReplacer(varName, lang, useLang, controller, action, params, location, !startOptBracket, delimiter);
+        })
+            .replace(SQUARE_BRACKET_REGEX, "")
             .replace(LOCATION_ALL_SLASHES_REGEX, this.delimiter);
         if (url.charAt(url.length - 1) == this.delimiter) {
             url = url.slice(0, -1);
+        }
+        if (Object.keys(params).length) {
+            url += "?" + $qs.stringify(params);
         }
         let baseUrl = "/";
         if (host || protocol || location.subApp) {
             baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
         }
         if (!langInLoc && useLang) {
-            baseUrl += lang + this.delimiter;
-        }
-        if (Object.keys(params).length) {
-            url += "?" + $qs.stringify(params);
+            baseUrl += lang + (url ? this.delimiter : "");
         }
         return baseUrl + url;
+    }
+    requestLocaleOrDefault(request) {
+        return ((request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX)
+            || ["en-US"])[0];
     }
     parseUrl(request) {
         let url = request.url.replace(DELIMITER_REGEX, "/");
         let parse = $url.parse(url);
         url = parse.pathname.slice(1);
         if (parse.pathname == "/") {
-            let lang = ((request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX)
-                || ["en-US"])[0];
+            let lang = this.requestLocaleOrDefault(request);
             return new RequestException_1.RequestException("No locale specified", 301, false, "/" + lang + (parse.query || ""));
         }
         let subApp = this.getSubAppFromRequest(request);
@@ -338,7 +356,7 @@ class Locator {
         loc.locationMatcher = new RegExp("^" + location.replace(LOCATION_PARAM_REGEX, (_, varName) => {
             loc.variables.push(varName);
             if (varName == LOCATION_LANG_VARIABLE_NAME) {
-                return "([a-z]{2}-[A-Z]{2})";
+                return "([a-z]{2}-[a-zA-Z]{2})";
             }
             if (varName == LOCATION_CTRL_VARIABLE_NAME) {
                 return "([a-zA-Z]{3,})";

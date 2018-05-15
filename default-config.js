@@ -17,7 +17,7 @@ const ApplicationConfig = {
 	 * For debuging; disable clustering and run app in one debugable process
 	 * @default false
 	 */
-	debugMode: false,
+	debugMode: typeof v8debug === "object" || /(--debug)|(--inspect)/.test(process.execArgv.join("")),
 
 	/**
 	 * For framework debuging - extra logs
@@ -200,13 +200,28 @@ const ApplicationConfig = {
 	 */
 	maxPostDataSize: 5e6,
 
-	/**
-	 * Enable running tests before application start
-	 * Not implemented yet
-	 * @type {boolean}
-	 * @default true
-	 */
-	doTestsAfterRun: false,
+	security: {
+		/**
+		 * Should be X-Powered-By header removed?
+		 * @type {boolean}
+		 * @default false
+		 */
+		hidePoweredBy: false,
+
+		/**
+		 * X-Frame-Options header
+		 * @type {FrameOptions}
+		 * @default FrameOption.Disabled
+		 */
+		xFrameOptions: $cfg.Configurations.FrameOptions.Disabled,
+
+		/**
+		 * Add X-Content-Type-Options: nosniff header?
+		 * @type {boolean}
+		 * @default false
+		 */
+		noSniff: false
+	}
 
 	// You can define your own settings here,.. it'll be available via global Jumbo.Config
 };

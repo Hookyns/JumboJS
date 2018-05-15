@@ -3,6 +3,8 @@
  * Written by Roman Jámbor ©
  */
 
+import {ErrorResult} from "../results/ErrorResult";
+
 if (Jumbo.config.jumboDebugMode) {
 	console.log("[DEBUG] REQUIRE: Controller");
 }
@@ -11,13 +13,13 @@ let $fs, $path, fileExtensionToMimeMap;// Will be initiated when required
 let crossRequestDataStorage: { [key: string]: any } = {};// Cross request storage
 const XJUMBO_REQUEST_ACTION_MAP = { // Object mapping x-jumbo-request types to controller actions
 	"text/html": function (ctrl: Controller, viewOrData, data = null) {
-		return ctrl.partialView(viewOrData, data);
+		return (<any>ctrl).partialView(viewOrData, data);
 	},
 	"text/template": function (ctrl: Controller, view) {
-		return ctrl.template(typeof view == "string" ? view : null);
+		return (<any>ctrl).template(typeof view == "string" ? view : null);
 	},
 	"application/json": function (ctrl: Controller, viewOrData, data = null) {
-		return ctrl.json(data || viewOrData || {});
+		return (<any>ctrl).json(data || viewOrData || {});
 	},
 };
 const X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME = "x-required-content-type"; // Name of HTTP header property which should tells
@@ -219,7 +221,7 @@ export class Controller
 	 * @param {Object} [data] Data object
 	 * @returns {ViewResult}
 	 */
-	renderView(viewOrData, data = null): ViewResult
+	protected renderView(viewOrData, data = null): ViewResult
 	{
 		return Controller.createBaseViewResult(viewOrData, data);
 	}
@@ -230,7 +232,7 @@ export class Controller
 	 * @param {String} [partialViewOrData] Name of specific view or data object
 	 * @param {Object} [data] Data object
 	 */
-	partialView(partialViewOrData = null, data = null): ViewResult
+	protected partialView(partialViewOrData = null, data = null): ViewResult
 	{
 		let res = Controller.createBaseViewResult(partialViewOrData, data);
 		res.partialView = true;
@@ -241,7 +243,7 @@ export class Controller
 	 * Return raw template without rendering
 	 * @param view
 	 */
-	template(view = null): ViewResult
+	protected template(view = null): ViewResult
 	{
 		let res = Controller.createBaseViewResult(view, undefined);
 		res.rawTemplate = true;
@@ -254,16 +256,17 @@ export class Controller
 	 * @param {String | Object} viewOrData
 	 * @param {Object} [data]
 	 */
-	view(viewOrData, data = null): ViewResult
+	protected view(viewOrData, data = null): ViewResult
 	{
 		let reqTypeHeader: string = <string>this.request.request.headers[X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME];
 
-		if (reqTypeHeader/*this.request.isXhr()*/)
+		if (reqTypeHeader/* && this.request.isXhr()*/)
 		{
 			let action = XJUMBO_REQUEST_ACTION_MAP[reqTypeHeader];
 
 			if (action)
 			{
+				this.response.headers["Vary"] = X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME;
 				return action(this, viewOrData, data);
 			}
 		}
@@ -279,7 +282,7 @@ export class Controller
 	 * @param {Object} [dataOrSnippetName] Data object or snppet name if first param contains data
 	 * @param {string} [snippetName] Name of BLOCK which will be returned to client
 	 */
-	snippetView(viewOrData, dataOrSnippetName = null, snippetName = "content"): ViewResult
+	protected snippetView(viewOrData, dataOrSnippetName = null, snippetName = "content"): ViewResult
 	{
 		let res;
 
@@ -303,7 +306,7 @@ export class Controller
 	 * @param data
 	 * @param {String} [type] Content-type
 	 */
-	data(data, type = "text/plain")
+	protected data(data, type = "text/plain")
 	{
 		if (type && type.trim().length != 0)
 		{
@@ -321,7 +324,7 @@ export class Controller
 	 * Ends request with JSON result
 	 * @param {Object} jsonObj
 	 */
-	json(jsonObj)
+	protected json(jsonObj)
 	{
 		this.data(JSON.stringify(jsonObj), "application/json");
 		this.exit();
@@ -335,13 +338,9 @@ export class Controller
 	 * @param [statusCode] default 500
 	 * @param {Error} error
 	 */
-	error(message, statusCode = 500, error = undefined)
+	protected error(message, statusCode = 500, error = undefined)
 	{
-		return {
-			status: statusCode,
-			message: message,
-			error: error
-		};
+		return new ErrorResult(message, statusCode, error);
 	}
 
 	/**
@@ -350,7 +349,7 @@ export class Controller
 	 * @param {String} [newName]
 	 * @param contentType
 	 */
-	fileDownload(filePath, newName, contentType)
+	protected fileDownload(filePath, newName, contentType)
 	{
 		// Require fs if it hasn't been required yet
 		if (!$fs)

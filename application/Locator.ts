@@ -5,7 +5,8 @@
 
 import {RequestException} from "../exceptions/RequestException";
 
-if (Jumbo.config.jumboDebugMode) {
+if (Jumbo.config.jumboDebugMode)
+{
 	console.log("[DEBUG] REQUIRE: Locator");
 }
 
@@ -44,6 +45,7 @@ export const DEFAULT_ACTION = "index";
 // let CONTROLLER_WITHOUT_ACTION_REGEX = /^([a-z]{2})?[\/][a-z]{3,}/;
 export let END_DELIMITER_TRIM_REGEX = /[\/]+$/;
 const LOCATION_PARAM_REGEX = /\$([a-z][a-zA-Z]*)/g; // /(\/)?\$([a-z][a-zA-Z]*)/g;
+const LOCATION_URL_BUILDER_PARAM_REGEX = /(\[)?(\/)?\$([a-z][a-zA-Z]*)/g; // /(\/)?\$([a-z][a-zA-Z]*)/g;
 const LOCATION_LANG_VARIABLE_NAME = "globlanguage";
 const LOCATION_CTRL_VARIABLE_NAME = "controller";
 const LOCATION_ACTION_VARIABLE_NAME = "action";
@@ -52,7 +54,7 @@ export const ActionTypes = ["action"].concat(Object.getOwnPropertyNames(Method).
 const IS_IP_REGEX = /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/;
 const PORT_REMOVE_REGEX = /:[0-9]+$/;
 const SQUARE_BRACKET_REGEX = /[\[\]]/g;
-const LOCATION_ALL_SLASHES_REGEX= /\//g;
+const LOCATION_ALL_SLASHES_REGEX = /\//g;
 let DELIMITER_REGEX = LOCATION_ALL_SLASHES_REGEX; // Filled from setDelimiter
 let controllerFactory: ControllerFactory = null; // Set from get instance();
 const ONLY_LOCALE_REGEX = /^[a-z]{2}-[A-Z]{2}$/;
@@ -62,38 +64,39 @@ const LOCALE_OPT_COUNTRY_REGEX = /[a-z]{2}(-[A-Z]{2})?/;
 
 //region Local functions
 
-function locationParamReplacer(varName, lang, useLang, controller, action, params, location)
+function locationParamReplacer(varName, lang, useLang, controller, action, params, location, isRequired, delimiter = "")
 {
 	if (varName == LOCATION_LANG_VARIABLE_NAME)
 	{
 		if (!useLang) return "";
-		return lang;
+		return delimiter + lang;
 	}
 
 	if (varName == LOCATION_CTRL_VARIABLE_NAME)
 	{
-		if (!controller)
+		if (!controller && isRequired)
 		{
 			throw new Error("This location require controller but you didn't pass any in parameters.");
 		}
 
-		return controller;
+		return controller ? (delimiter + controller) : "";
 	}
 
 	if (varName == LOCATION_ACTION_VARIABLE_NAME)
 	{
-		if (!action)
+		if (!action && isRequired)
 		{
 			throw new Error("This location require action but you don't pass any in parameters.");
 		}
-		return action;
+		return action ? (delimiter + action) : "";
 	}
 
-	if (params[varName])
+	let param = params[varName];
+	if (param)
 	{
-		let param = params[varName];
+		// let param = params[varName];
 		delete params[varName];
-		return param;
+		return param ? (delimiter + param) : "";
 	}
 
 	if (location.options[varName])
@@ -164,7 +167,11 @@ export class Locator
 	/**
 	 * Returns Locator's parameter types
 	 */
-	static get ParamType(): {}
+	static get ParamType(): {
+		Integer: RegExp,
+		StringId: RegExp,
+		Number: RegExp
+	}
 	{
 		return ParamType;
 	}
@@ -173,7 +180,12 @@ export class Locator
 	/**
 	 * Returns HTTP methods which framework support for actons
 	 */
-	static get Method(): {}
+	static get Method(): {
+		POST: string,
+		PUT: string,
+		GET: string,
+		DELETE: string
+	}
 	{
 		return Method;
 	}
@@ -215,6 +227,15 @@ export class Locator
 		return instance;
 	}
 
+	/**
+	 * Default location name
+	 * @returns {string}
+	 */
+	static get defaultLocationName(): string
+	{
+		return DEFAULT_LOCATION_NAME;
+	}
+
 	//endregion
 
 	//region Setters
@@ -237,7 +258,8 @@ export class Locator
 	 */
 	setDelimiter(delimiter: string)
 	{
-		if (delimiter.length != 1) {
+		if (delimiter.length != 1)
+		{
 			throw new Error("Delimiter must be exactly one character.");
 		}
 
@@ -405,11 +427,11 @@ export class Locator
 		// Default action - return base URL just with controller
 		else if (action == DEFAULT_ACTION && noParams)
 		{
-			return baseUrl + controller.toLowerCase();
+			return baseUrl + controller;//.toLowerCase();
 		}
 		else
 		{
-			let url = baseUrl + controller.toLowerCase() + this.delimiter + action.toLowerCase();
+			let url = baseUrl + controller/*.toLowerCase()*/ + this.delimiter + action/*.toLowerCase()*/;
 
 			if (!noParams)
 			{
@@ -467,23 +489,42 @@ export class Locator
 			action = location.options.action;
 		}
 
-		action = action.toLowerCase();
-		controller = controller.toLowerCase();
+		// Find just that params that should be in query; not location string variables
+		let notVariablesParams = Object.keys(params);
+		if (location.variables.length !== 0)
+		{
+			notVariablesParams = notVariablesParams.filter(param => !location.variables.includes(param));
+		}
+
+		if (notVariablesParams.length === 0)
+		{
+			if (controller == DEFAULT_CONTROLLER) controller = "";
+			if (action == DEFAULT_ACTION) action = "";
+			// action = action.toLowerCase();
+			// controller = controller.toLowerCase();
+		}
 
 		const useLang = GLOBALIZATION_ENABLED && lang;
-		lang = (lang || "").toLowerCase();
+		lang = (lang || "");//.toLowerCase();
 
-		// Remove optional parameters -> remove brackets
-		let loc = location.location.replace(SQUARE_BRACKET_REGEX, "");
+		let loc = location.location;
 		const langInLoc = loc.indexOf("$" + LOCATION_LANG_VARIABLE_NAME) !== -1;
 
 		let url = loc
-			.replace(LOCATION_PARAM_REGEX, (_, varName) =>
-				locationParamReplacer(varName, lang, useLang, controller, action, params, location))
+			.replace(LOCATION_URL_BUILDER_PARAM_REGEX, (_, startOptBracket, delimiter, varName) => {
+				return locationParamReplacer(varName, lang, useLang, controller, action, params, location, !startOptBracket, delimiter)
+			})
+			.replace(SQUARE_BRACKET_REGEX, "") // replace resting square brackets
 			.replace(LOCATION_ALL_SLASHES_REGEX, this.delimiter); // replace location delimiter
 
-		if (url.charAt(url.length - 1) == this.delimiter) {
+		if (url.charAt(url.length - 1) == this.delimiter)
+		{
 			url = url.slice(0, -1);
+		}
+
+		if (Object.keys(params).length)
+		{
+			url += "?" + $qs.stringify(params);
 		}
 
 		let baseUrl = "/";
@@ -495,15 +536,18 @@ export class Locator
 
 		if (!langInLoc && useLang)
 		{
-			baseUrl += lang + this.delimiter;
-		}
-
-		if (Object.keys(params).length)
-		{
-			url += "?" + $qs.stringify(params);
+			baseUrl += lang + (url ? this.delimiter : "");
 		}
 
 		return baseUrl + url;
+	}
+
+	requestLocaleOrDefault(request: $http.IncomingMessage): string
+	{
+		return (
+			(<string>request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX)
+			|| ["en-US"]
+		)[0];
 	}
 
 	/**
@@ -519,10 +563,7 @@ export class Locator
 
 		if (parse.pathname == "/") // empty, only slash
 		{
-			let lang = (
-				(<string>request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX)
-				|| ["en-US"]
-			)[0];
+			let lang = this.requestLocaleOrDefault(request);
 
 			return <any>new RequestException(
 				"No locale specified",
@@ -623,6 +664,19 @@ export class Locator
 	//endregion
 
 	//region Private methods
+
+	// TODO?
+	// static getLocationParamsWithoutSystems(requestParams: any, location: ILocation): { [key: string]: any }
+	// {
+	// 	let params = {}, vars = location.variables.filter(v => v);
+	//
+	// 	for (let variable of vars)
+	// 	{
+	// 		params[variable] = requestParams[variable];
+	// 	}
+	//
+	// 	return params;
+	// }
 
 	// noinspection JSMethodCanBeStatic
 	/**
@@ -763,7 +817,7 @@ export class Locator
 
 			if (varName == LOCATION_LANG_VARIABLE_NAME)
 			{
-				return "([a-z]{2}-[A-Z]{2})";
+				return "([a-z]{2}-[a-zA-Z]{2})"; // [a-zA-Z] should be just [A-Z] (only upper-case) but we must accept it and then redirect user to URL with right case
 			}
 
 			if (varName == LOCATION_CTRL_VARIABLE_NAME)
@@ -780,7 +834,8 @@ export class Locator
 
 			if (options[varName])
 			{
-				if (options[varName].constructor != RegExp) {
+				if (options[varName].constructor != RegExp)
+				{
 					throw new Error(`Location parameter '$${varName}' must be regular expression.`);
 				}
 

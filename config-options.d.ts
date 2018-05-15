@@ -18,4 +18,9 @@ export declare namespace Configurations {
         Development = 0,
         Production = 1,
     }
+    enum FrameOptions {
+        Disabled = 0,
+        Deny = 1,
+        SameOrigin = 2,
+    }
 }

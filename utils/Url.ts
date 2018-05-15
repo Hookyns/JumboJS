@@ -19,12 +19,16 @@ export class Url
 
 	private options: any = {};
 
+	private request: Request;
+
 	//endregion
 
 	//region Ctors
 
 	constructor(request: Request)
 	{
+		this.request = request;
+
 		// Copy default values from current request
 		this.options = {
 			action: request.action,
@@ -32,7 +36,7 @@ export class Url
 			subApp: request.subApp,
 			location: request.location.locationName,
 			locale: request.locale,
-			params: {}
+			params: null
 		};
 	}
 
@@ -117,15 +121,22 @@ export class Url
 	public getUrl(): string
 	{
 		const opt = this.options;
+		opt.location = opt.location || Locator.defaultLocationName;
 
-		if (this.options.location)
-		{
+		if (opt.params == null) {
+			opt.params = {};
+			// opt.params = Locator.getLocationParamsWithoutSystems( / TODO: ?
+			// 	this.request.params, this.request.location);
+		}
+
+		// if (opt.location)
+		// {
 			return Locator.instance.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
-		}
-		else
-		{
-			return Locator.instance.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
-		}
+		// }
+		// else
+		// {
+		// 	return Locator.instance.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
+		// }
 	}
 
 	//endregion

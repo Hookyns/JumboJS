@@ -1,3 +1,4 @@
+import { ErrorResult } from "../results/ErrorResult";
 export declare class Controller {
     request: Request;
     response: Response;
@@ -16,19 +17,15 @@ export declare class Controller {
     protected static createBaseViewResult(viewOrData: string | {}, data: {}): ViewResult;
     exit(): void;
     addMessage(message: string, messageType: any): void;
-    renderView(viewOrData: any, data?: any): ViewResult;
-    partialView(partialViewOrData?: any, data?: any): ViewResult;
-    template(view?: any): ViewResult;
-    view(viewOrData: any, data?: any): ViewResult;
-    snippetView(viewOrData: any, dataOrSnippetName?: any, snippetName?: string): ViewResult;
-    data(data: any, type?: string): void;
-    json(jsonObj: any): void;
-    error(message: any, statusCode?: number, error?: any): {
-        status: number;
-        message: any;
-        error: any;
-    };
-    fileDownload(filePath: any, newName: any, contentType: any): void;
+    protected renderView(viewOrData: any, data?: any): ViewResult;
+    protected partialView(partialViewOrData?: any, data?: any): ViewResult;
+    protected template(view?: any): ViewResult;
+    protected view(viewOrData: any, data?: any): ViewResult;
+    protected snippetView(viewOrData: any, dataOrSnippetName?: any, snippetName?: string): ViewResult;
+    protected data(data: any, type?: string): void;
+    protected json(jsonObj: any): void;
+    protected error(message: any, statusCode?: number, error?: any): ErrorResult;
+    protected fileDownload(filePath: any, newName: any, contentType: any): void;
     protected redirect(url: Url): void;
 }
 import { Url } from "jumbo-core/utils/Url";

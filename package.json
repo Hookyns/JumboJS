@@ -38,14 +38,14 @@
 	"types": "loader.d.ts",
 	"dependencies": {
 		"formidable": "^1.2.0",
-		"uuid": "^3.2.1"
+		"uuid": "~3.2.1"
 	},
 	"devDependencies": {
 		"@types/node": "^8.9.4",
 		"typescript": "^2.7.2"
 	},
 	"engines": {
-		"node": ">=7.7.0"
+		"node": ">=8.9.0"
 	},
 	"license": "MIT",
 	"repository": {

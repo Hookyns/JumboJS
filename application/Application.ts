@@ -3,6 +3,8 @@
  * Written by Roman Jámbor ©
  */
 
+import {ErrorResult} from "../results/ErrorResult";
+
 if (Jumbo.config.jumboDebugMode)
 {
 	console.log("[DEBUG] REQUIRE: Application");
@@ -19,10 +21,10 @@ import * as $https from "https";
 import * as $http from "http";
 import * as uuid from "uuid/v1";
 
-import * as $clusterCmds from "jumbo-core/cluster/cluster-messaging";
-import * as fileExtensionToMimeMap from "jumbo-core/utils/file-extension-to-mime-map";
 import {Exception} from "jumbo-core/exceptions/Exception";
 import {ViewResult} from "jumbo-core/results/ViewResult";
+import {cluster, ClusterCommands} from "jumbo-core/cluster/Cluster"
+import {staticFileResolver} from "../base/staticFileResolver";
 
 const $cfg = require("jumbo-core/config-options").Configurations;
 
@@ -40,9 +42,6 @@ const DEVELOPMENT_MODE = Jumbo.config.deployment == $cfg.Deployment.Development;
 const CHECK_INTERVAL_TIME = 5;// Number of seconds, time for collecting data, after that time are limits (amplified by
                               // this number) checked
 const TPL_CACHE_EXTENSION = ".tplcache"; // Extension for template cache files
-const CPU_COUNT = !Jumbo.config.clustering.numberOfWorkers
-	? require('os').cpus().length
-	: Jumbo.config.clustering.numberOfWorkers;
 const BEFORE_ACTION_NAME = "beforeActions";
 let CAN_USE_CACHE = false;
 const MAX_POST_DATA_SIZE = Jumbo.config.maxPostDataSize;
@@ -152,22 +151,18 @@ export class Application
 	/**
 	 * Handler which should return file for given URL
 	 */
-	private staticFileResolver: (fileName: string,
+	private staticFileResolver/*: (fileName: string,
 		callback: (error: Error,
 			readStream: $fs.ReadStream,
 			mime: string,
 			size: number,
-			headers?: { [key: string]: any }) => void) => void;
+			headers?: { [key: string]: any }) => void) => void*/
+		= staticFileResolver;
 
 	/**
 	 * Template adapter
 	 */
 	private templateAdapter: ITemplateAdapter = null;
-
-	/**
-	 * If clustering enabled, hold number of workers ready
-	 */
-	private numberOfWorkerReady: number;
 
 	/**
 	 * Will be true after setting up http server
@@ -268,29 +263,7 @@ export class Application
 			throw new Error("You cannot call private constructor!");
 		}
 
-		this.staticFileResolver = (fileName, callback) => {
-			$fs.lstat(fileName, (error, stats) => {
-				if (error)
-				{
-					callback(error, null, null, null);
-					return;
-				}
-
-				if (stats.isFile())
-				{
-					let mime = fileExtensionToMimeMap[$path.extname(fileName).slice(1)];
-					callback(null, $fs.createReadStream(fileName), mime, stats.size);
-				}
-				else if (stats.isDirectory())
-				{
-					callback(new Error("Accessing folder content is not allowed."), null, null, null);
-				}
-				else
-				{
-					callback(new Error("File not found."), null, null, null);
-				}
-			});
-		};
+		this.setErrorHandlingEvents();
 
 		if ($cluster.isWorker || DEBUG_MODE)
 		{
@@ -299,7 +272,6 @@ export class Application
 
 		this.serverIsReady = true;
 		this.initClustering();
-		this.setErrorHandlingEvents();
 	}
 
 	//endregion
@@ -312,7 +284,7 @@ export class Application
 	 * @param {Number} time Number of seconds
 	 * @param {Function} func Your function
 	 */
-	registerIntervalTask(time, func)
+	public registerIntervalTask(time, func)
 	{
 		if ($cluster.isMaster)
 		{
@@ -328,7 +300,7 @@ export class Application
 	 * @param {Number} second Second in minute
 	 * @param {Function} func Your function
 	 */
-	registerDailyTask(hour, minute, second, func)
+	public registerDailyTask(hour, minute, second, func)
 	{
 		throw new Error("Not implemented yet!");
 
@@ -358,7 +330,7 @@ export class Application
 	 * @param {Number} port
 	 * @param {Function} callback
 	 */
-	runWhenReady(port, callback)
+	public runWhenReady(port, callback)
 	{
 		this.port = port;
 
@@ -397,7 +369,7 @@ export class Application
 						console.timeEnd("Application Worker " + $cluster.worker.id + " load-time: ");
 
 						//Invoke worker ready
-						$clusterCmds.invoke($clusterCmds.Commands.WorkerReady);
+						cluster.invoke(ClusterCommands.WorkerReady);
 					}
 					else
 					{
@@ -417,7 +389,7 @@ export class Application
 	 * @param request
 	 * @returns {String}
 	 */
-	getClientIP(request: $http.IncomingMessage): string
+	public getClientIP(request: $http.IncomingMessage): string
 	{
 		return <string>request.headers["X-Forwarded-For"] || request.connection.remoteAddress;
 	}
@@ -434,9 +406,17 @@ export class Application
 		else
 		{
 			Log.line("Exiting child process...", LogTypes.Std, 0);
-			$clusterCmds.invoke($clusterCmds.Commands.ExitApp);
+			cluster.invoke(ClusterCommands.ExitApp);
 		}
 		process.exit(0);
+	}
+
+	/**
+	 * Invoked by Cluster when all Workers ready
+	 */
+	public workersReady()
+	{
+		Log.line("Server is running on port " + this.port, LogTypes.Start, 0);
 	}
 
 	//endregion
@@ -479,111 +459,14 @@ export class Application
 		})
 	}
 
+	// noinspection JSMethodCanBeStatic
 	/**
 	 * Initiate application clustering
 	 * @private
 	 */
 	private initClustering()
 	{
-		if ($cluster.isMaster)
-		{
-			// Fork this process - start clustering
-			if (Jumbo.config.clustering && typeof Jumbo.config.clustering.numberOfWorkers == "number"
-				&& !DEBUG_MODE)
-			{
-				for (let c = 0; c < CPU_COUNT; c++)
-				{
-					$cluster.fork();
-				}
-
-				$cluster.on("exit", (worker, code, signal) => {
-					this.clusterOnExit(worker, code, signal);
-				}).on("message", (worker, message) => {
-					this.clusterMasterOnMessage(worker, message);
-				});
-			}
-		}
-		else
-		{
-			process.on("message", (message) => {
-				this.clusterWorkerOnMessage(message);
-			});
-		}
-	}
-
-	/**
-	 * Handler for cluster exit (if worker exit)
-	 * @param worker
-	 * @param code
-	 * @param signal
-	 */
-	private clusterOnExit(worker, code, signal)
-	{
-		Log.line(`Worker ${worker.id} exited with code: ${code == undefined ? (signal || "unknown") : code}`);
-
-		// wanted exit
-		if (code == 0) return;
-
-		// Refork process after 1 sec
-		setTimeout(() => {
-			Log.line(`Reforking worker ${worker.id}`);
-			$cluster.fork();
-		}, 1000);
-	}
-
-	// noinspection JSMethodCanBeStatic
-	/**
-	 * Handler for worker messages
-	 * @param message
-	 */
-	private clusterWorkerOnMessage(message)
-	{
-		if (message.hasOwnProperty("exit"))
-		{
-			process.exit(message["exit"]);
-		}
-	}
-
-	/**
-	 * Handler for master messages
-	 * @param {$cluster.Worker} worker
-	 * @param message
-	 */
-	private clusterMasterOnMessage(worker: $cluster.Worker, message)
-	{
-		Log.line("[Worker " + worker.id + "] sent message: " + JSON.stringify(message),
-			LogTypes.Std, LogLevels.TalkativeCluster);
-
-		switch (message.invokeAction)
-		{
-			// Logging
-			case $clusterCmds.Commands.Log:
-				Log.line(message.invokeData.message, message.invokeData.type, message.invokeData.level);
-				break;
-			// WorkerReady
-			case $clusterCmds.Commands.WorkerReady:
-				this.numberOfWorkerReady++;
-				if (this.numberOfWorkerReady == CPU_COUNT)
-				{
-					Log.line("Server is running on port " + this.port, LogTypes.Start, 0);
-				}
-				break;
-			case $clusterCmds.Commands.ExitApp:
-				Application.exit();
-				break;
-			case $clusterCmds.Commands.RestartWorker:
-				// Create new worker
-				$cluster.fork().on("online", () => {
-					setTimeout(() => {
-						// exit old worker
-						worker.send({exit: 0});
-					}, 1000);
-				});
-				break;
-			default:
-				Log.warning("Not implemented cluster message (code " + message.invokeAction + ").");
-				break;
-		}
+		cluster.initClustering();
 	}
 
 	/**
@@ -751,7 +634,7 @@ export class Application
 	 */
 	private async checkStaticFileRequest(request: $http.IncomingMessage, response: $http.ServerResponse): Promise<boolean>
 	{
-		if (request.method == "GET" && request.url.slice(0, 7) == "/public")
+		if (request.method == "GET" && request.url.slice(0, 7) === "/public")
 		{
 			let url = decodeURI(request.url);
 
@@ -762,7 +645,7 @@ export class Application
 						if (error)
 						{
 							this.displayError(request, response, {
-								status: 404,
+								statusCode: 404,
 								message: "File '" + url + "' error. " + error.message
 							});
 							return resolve(false);
@@ -901,7 +784,7 @@ export class Application
 	 * @param requestBeginTime
 	 * @returns {*}
 	 */
-	private async processRequest(request, response, requestBeginTime)
+	private async processRequest(request: $http.IncomingMessage, response: $http.ServerResponse, requestBeginTime)
 	{
 		const jResponse = new Response(response); // Build response
 
@@ -976,7 +859,7 @@ export class Application
 		if (match == null || !(<RequestException><any>match).redirectTo)
 		{
 			return this.displayError(request, response, {
-				status: 404,
+				statusCode: 404,
 				message: `Page not found. Requested URL '${request.url}'`
 			})
 		}
@@ -1022,7 +905,7 @@ export class Application
 		// If session is justInMemory, ignore drive and return
 		if (Jumbo.config.session.justInMemory === true)
 		{
-			return undefined;
+			return {}; // undefined
 		}
 
 		return await new Promise<{ [key: string]: any }>(resolve => {
@@ -1031,14 +914,14 @@ export class Application
 				{
 					try
 					{
-						resolve(JSON.parse(sessJson));
+						resolve(JSON.parse(sessJson) || {});
 					}
 					catch (e)
 					{
 					}
 				}
 
-				resolve(undefined);
+				resolve({}/*undefined*/);
 			});
 		});
 	}
@@ -1061,7 +944,7 @@ export class Application
 		req._bindLocation(match.location, target.subApp, target.controller, target.action, match.params);
 
 		req.beginTime = requestBeginTime;
-		req.locale = match.locale;
+		req.locale = match.locale || this.locator.requestLocaleOrDefault(request);
 
 		return req;
 	}
@@ -1120,7 +1003,7 @@ export class Application
 						end = true;
 						form.emit("error", "The post data received is too big");
 						await this.displayError(req.request, res.response, {
-							status: 413,
+							statusCode: 413,
 							message: "The post data received is too big"
 						});
 						req.request.connection.destroy();
@@ -1297,13 +1180,15 @@ export class Application
 		// if null returned, empty result is required
 		if (actionResult === null)
 		{
+			controller.exited = true;
 			return res.response.end("");
 		}
 
-		// if (actionResult instanceof Error || actionResult instanceof Exception) // Error can be returned too
-		// {
-		// 	return this.displayError(request, response, actionResult);
-		// }
+		if (actionResult.constructor == ErrorResult)
+		{
+            controller.exited = true;
+			return this.displayError(req.request, res.response, <ErrorResult><any>actionResult);
+		}
 
 		if (actionResult.constructor == ViewResult) // actionResult.constructor == ViewResult should be 6x faster but it returns FALSE sometimes, WTF?
 		{
@@ -1327,7 +1212,7 @@ export class Application
 	}
 
 	/**
-	 * Wil store session
+	 * Will store session
 	 * @param {Controller} cntrll
 	 * @param {Request} req
 	 */
@@ -1340,7 +1225,7 @@ export class Application
 
 			if (Jumbo.config.session.justInMemory !== true)
 			{
-				// To disk
+				// To disk; not waiting for result
 				$fs.writeFile(
 					$path.join(Jumbo.SESSION_DIR, req.sessionId + ".session"),
 					JSON.stringify(cntrll.session),
@@ -1368,8 +1253,15 @@ export class Application
 			tplCacheFileName += viewResult.view.replace(/[^\w\\\/]/g, "").replace(/[\/\\]/g, "-");
 
 			if (viewResult.partialView)
-			{ // snippetView is partialView too
-				tplCacheFileName += "_single-template";
+			{
+				if (viewResult.snippet)
+				{
+					tplCacheFileName += "_snippet-" + viewResult.snippet;
+				}
+				else
+				{
+					tplCacheFileName += "_partial-template";
+				}
 			}
 		}
 		else
@@ -1408,8 +1300,12 @@ export class Application
 		// so only one request will be made per client
 		if (viewResult.rawTemplate)
 		{
+			let appPath = this.getAppPath(req);
+			let templatePath = this.getTemplatePath(appPath, viewResult);
+
 			return await new Promise((resolve, reject) => {
-				$fs.readFile(tplCacheFile, "utf-8", (err, content) => {
+				// TODO: rather use $fs.createReadStream
+				$fs.readFile(templatePath/*tplCacheFile*/, "utf-8", (err, content) => {
 					if (err)
 					{
 						return reject(err);
@@ -1551,20 +1447,14 @@ export class Application
 	 */
 	private prepareRenderViewProperties(req: Request, viewResult: ViewResult)
 	{
-		let appPath = Jumbo.APP_DIR;
-
-		if (req.subApp != MAIN_SUBAPP_NAME)
-		{
-			appPath = $path.join(Jumbo.APP_DIR, "sub-apps", this.controllerFactory.getSubAppInfo(req.subApp).dir);
-		}
-
-		let templatePath = $path.join(appPath, "templates", viewResult.view + this.templateAdapter.extension);
+		let appPath = this.getAppPath(req);
+		let templatePath = this.getTemplatePath(appPath, viewResult);
 		let layoutPath: string | null = null;
 		let dynamicLayout: string | null = null;
 
 		if (viewResult.snippet)
 		{
-			dynamicLayout = '{include ' + viewResult.snippet + '}';
+			dynamicLayout = '{include ' + viewResult.snippet + '}'; // TODO: Error! Template specific! Must be reworked!
 
 			if (DEBUG_MODE)
 			{
@@ -1589,6 +1479,32 @@ export class Application
 		}
 
 		return {templatePath, layoutPath, dynamicLayout};
+	}
+
+	/**
+	 * Get path for view
+	 * @param {string} appPath
+	 * @param {ViewResult} viewResult
+	 * @returns {string}
+	 */
+	private getTemplatePath(appPath: string, viewResult: ViewResult)
+	{
+		return $path.join(appPath, "templates", viewResult.view + this.templateAdapter.extension);
+	}
+
+	/**
+	 * Get (sub)app path
+	 * @param {Request} req
+	 * @returns {string}
+	 */
+	private getAppPath(req: Request): string
+	{
+		if (req.subApp == MAIN_SUBAPP_NAME)
+		{
+			return Jumbo.APP_DIR;
+		}
+
+		return $path.join(Jumbo.APP_DIR, "sub-apps", this.controllerFactory.getSubAppInfo(req.subApp).dir);
 	}
 
 	/**
@@ -1692,7 +1608,7 @@ export class Application
 
 		let errorObj = {
 			message: errObj.message || ex.message,
-			status: errObj.status || ex.statusCode || 500,
+			status: ex.statusCode || errObj.status || 500,
 			stack: ex.stack
 		};
 
@@ -1704,7 +1620,7 @@ export class Application
 
 		if (DEVELOPMENT_MODE && (ex instanceof Error || ex instanceof Exception))
 		{
-			return this.renderException(errorObj.message || ex.message, ex, errorObj.status || 500, request, response);
+			return this.renderException(errorObj.message, ex, errorObj.status, request, response);
 		}
 
 		let errFile = $path.resolve(Jumbo.ERR_DIR, errorObj.status + ".html");

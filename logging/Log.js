@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const $fs = require("fs");
 const $path = require("path");
 const $cluster = require("cluster");
-const $clusterCmds = require("../cluster/cluster-messaging");
+const Cluster_1 = require("../cluster/Cluster");
 const $newLine = require("os").EOL;
 const $cfg = require("jumbo-core/config-options").Configurations;
 const config = Jumbo.config;
@@ -44,7 +44,7 @@ class Log {
             }
             else {
                 message = "[Worker " + $cluster.worker.id + "] " + message;
-                $clusterCmds.invoke($clusterCmds.Commands.Log, {
+                Cluster_1.cluster.invoke(Cluster_1.ClusterCommands.Log, {
                     message: message,
                     type: type,
                     level: level
@@ -65,6 +65,9 @@ class Log {
             if ($fs.lstatSync(Log.dir).isDirectory()) {
                 this.which = this.curTime().replace(/[: ]/g, "-");
                 this.isInitiated = true;
+                Cluster_1.cluster.on(Cluster_1.ClusterCommands.Log, (event) => {
+                    Log.line(event.data.message, event.data.type, event.data.level);
+                });
             }
         }
     }

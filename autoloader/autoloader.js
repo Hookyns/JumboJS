@@ -12,7 +12,8 @@
 const $cluster = require("cluster");
 const $path = require("path");
 const $fs = require("fs");
-const $clusterCmds = require("jumbo-core/cluster/cluster-messaging");
+const {cluster, ClusterCommands} = require("jumbo-core/cluster/Cluster");
+const $os = require("os");
 
 // Regex matching filenames which should autoloaded
 const FILE_NAME_REGEX = /^[A-Z].*\.(js)$/;
@@ -20,14 +21,18 @@ const FILE_NAME_REGEX = /^[A-Z].*\.(js)$/;
 // Regex matching extensions - used for extension removing
 const EXTENSION_REGEX = /\.(js)$/;
 
+const IS_WIN32 = $os.platform() === "win32";
+
 // Convert file name to upper camel case
 function toCamelCase(fileName) {
-	return (fileName.charAt(0).toUpperCase() + fileName.substr(1)).replace(/-(.)/g, function (_, upChar) {
+	return (
+		fileName.charAt(0).toUpperCase() + fileName.substr(1)
+	).replace(/[-_](.)/g, function (_, upChar) {
 		return upChar.toUpperCase();
 	});
 }
 
-let watchAppDir = async function (file, ns) {
+async function watchAppDir(file, ns) {
 	if (file.slice(0, Jumbo.APP_DIR.length) === Jumbo.APP_DIR) {
 		// Enable watching over app directory - reload after some change
 		let nextChangeAfter = null;
@@ -52,15 +57,15 @@ let watchAppDir = async function (file, ns) {
 					});
 				}) : false;
 
-				// // New file added - reload process
-				$clusterCmds.invoke($clusterCmds.Commands.RestartWorker);
+				// New file added - reload process
+				cluster.invoke(ClusterCommands.RestartWorker);
 
 				Jumbo.Logging.Log.line(`File ${classPath} ${removed ? "removed" : (inNS ? "changed" : "added")} - reload`,
 					Jumbo.Logging.Log.LogTypes.Std, Jumbo.Logging.Log.LogLevels.Talkative);
 			}, 1000);
 		});
 	}
-};
+}
 
 // Create function for recursive walk-through
 function loadDir(dir) {
@@ -71,16 +76,21 @@ function loadDir(dir) {
 	list.forEach(function (fileName) {
 		if (fileName.charAt(0) === "." || fileName === "node_modules") return;
 
-		let file = $path.resolve(dir, fileName);
-		file = file.charAt(0).toLowerCase() + file.slice(1);
-		let stat = $fs.lstatSync(file);
+		let filePath = $path.resolve(dir, fileName);
+
+		// Update drive letter case on Windows
+		if (IS_WIN32) {
+			filePath = filePath.charAt(0).toUpperCase() + filePath.slice(1);
+		}
+
+		let stat = $fs.lstatSync(filePath);
 
 		if (stat) {
 			if (stat.isDirectory()) {
-				let ns = loadDir(file);
+				let ns = loadDir(filePath);
 				name = toCamelCase(fileName);
 				result[name] = ns;
-				if ($cluster.isWorker) watchAppDir(file, ns);
+				if ($cluster.isWorker) watchAppDir(filePath, ns);
 			} else if (stat.isFile()) {
 				if (FILE_NAME_REGEX.test(fileName)) {
 					let cls = fileName.replace(EXTENSION_REGEX, "");
@@ -97,7 +107,7 @@ function loadDir(dir) {
 					Object.defineProperty(result, cls, {
 						enumerable: true,
 						get: function () {
-							let req = require(file);
+							let req = require(filePath);
 							return req[cls] || req["default"] || req;
 						}
 					});

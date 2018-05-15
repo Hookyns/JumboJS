@@ -24,9 +24,10 @@ function uncache(moduleName) {
 		}
 	});
 }
+
 exports.uncache = uncache;
 
-	/**
+/**
  * Runs over the cache to search for all the cached files
  * @author Ben Barkay
  * @link http://stackoverflow.com/questions/9210542/node-js-require-cache-possible-to-invalidate
@@ -43,7 +44,10 @@ function searchCache(moduleName, callback) {
 			// Go over each of the module's children and
 			// run over it
 			mod.children.forEach(function (child) {
-				run(child);
+				if (child.id != mod.id) {
+					console.log(mod.id, child.id);
+					run(child);
+				}
 			});
 
 			// Call the specified callback providing the
@@ -52,5 +56,6 @@ function searchCache(moduleName, callback) {
 		})(mod);
 	}
 }
+
 exports.searchCache = searchCache;
 

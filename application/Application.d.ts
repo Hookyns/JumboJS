@@ -15,7 +15,6 @@ export declare class Application {
     private blockIpListener;
     private staticFileResolver;
     private templateAdapter;
-    private numberOfWorkerReady;
     serverIsRunning: boolean;
     getLocator(): Locator;
     getDIContainer(): DIContainer;
@@ -29,12 +28,10 @@ export declare class Application {
     runWhenReady(port: any, callback: any): void;
     getClientIP(request: $http.IncomingMessage): string;
     static exit(): void;
+    workersReady(): void;
     private beforeRunWhenReadyCallback();
     private setErrorHandlingEvents();
     private initClustering();
-    private clusterOnExit(worker, code, signal);
-    private clusterWorkerOnMessage(message);
-    private clusterMasterOnMessage(worker, message);
     private createServer();
     private prepareRequestsSetting();
     private prepareHttpsServerOptions();
@@ -61,6 +58,8 @@ export declare class Application {
     private sendView(output, res, ctrl);
     private compileAndRenderView(viewResult, req, res, cntrl, writeToCache, tplCacheFileName);
     private prepareRenderViewProperties(req, viewResult);
+    private getTemplatePath(appPath, viewResult);
+    private getAppPath(req);
     private cacheViewTemplate(tplCacheFile, compiledtemplate);
     private afterTemplateRender(ctrl);
     private plainResponse(response, message, code);

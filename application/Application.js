@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const ErrorResult_1 = require("../results/ErrorResult");
 if (Jumbo.config.jumboDebugMode) {
     console.log("[DEBUG] REQUIRE: Application");
 }
@@ -11,10 +12,10 @@ const $formidable = require("formidable");
 const $https = require("https");
 const $http = require("http");
 const uuid = require("uuid/v1");
-const $clusterCmds = require("jumbo-core/cluster/cluster-messaging");
-const fileExtensionToMimeMap = require("jumbo-core/utils/file-extension-to-mime-map");
 const Exception_1 = require("jumbo-core/exceptions/Exception");
 const ViewResult_1 = require("jumbo-core/results/ViewResult");
+const Cluster_1 = require("jumbo-core/cluster/Cluster");
+const staticFileResolver_1 = require("../base/staticFileResolver");
 const $cfg = require("jumbo-core/config-options").Configurations;
 const USE_HTTPS = Jumbo.config.protocol.protocol === $cfg.Protocols.Https;
 const CLIENT_MESSAGE_ID = Jumbo.Base.Controller.clientMessagesId;
@@ -25,9 +26,6 @@ const LOG_ENABLED = Jumbo.config.log.enabled === true;
 const DEVELOPMENT_MODE = Jumbo.config.deployment == $cfg.Deployment.Development;
 const CHECK_INTERVAL_TIME = 5;
 const TPL_CACHE_EXTENSION = ".tplcache";
-const CPU_COUNT = !Jumbo.config.clustering.numberOfWorkers
-    ? require('os').cpus().length
-    : Jumbo.config.clustering.numberOfWorkers;
 const BEFORE_ACTION_NAME = "beforeActions";
 let CAN_USE_CACHE = false;
 const MAX_POST_DATA_SIZE = Jumbo.config.maxPostDataSize;
@@ -56,35 +54,18 @@ class Application {
         this.memoryCacheQueue = [];
         this.memoryCacheSize = 0;
         this.blockIpListener = null;
+        this.staticFileResolver = staticFileResolver_1.staticFileResolver;
         this.templateAdapter = null;
         this.serverIsRunning = false;
         if (new.target != ApplicationActivator) {
             throw new Error("You cannot call private constructor!");
         }
-        this.staticFileResolver = (fileName, callback) => {
-            $fs.lstat(fileName, (error, stats) => {
-                if (error) {
-                    callback(error, null, null, null);
-                    return;
-                }
-                if (stats.isFile()) {
-                    let mime = fileExtensionToMimeMap[$path.extname(fileName).slice(1)];
-                    callback(null, $fs.createReadStream(fileName), mime, stats.size);
-                }
-                else if (stats.isDirectory()) {
-                    callback(new Error("Accessing folder content is not allowed."), null, null, null);
-                }
-                else {
-                    callback(new Error("File not found."), null, null, null);
-                }
-            });
-        };
+        this.setErrorHandlingEvents();
         if ($cluster.isWorker || DEBUG_MODE) {
             this.createServer();
         }
         this.serverIsReady = true;
         this.initClustering();
-        this.setErrorHandlingEvents();
     }
     getLocator() {
         return this.locator;
@@ -144,7 +125,7 @@ class Application {
                     this.serverIsRunning = true;
                     if (!DEBUG_MODE) {
                         console.timeEnd("Application Worker " + $cluster.worker.id + " load-time: ");
-                        $clusterCmds.invoke($clusterCmds.Commands.WorkerReady);
+                        Cluster_1.cluster.invoke(Cluster_1.ClusterCommands.WorkerReady);
                     }
                     else {
                         Log_1.Log.line("Server is running on port " + this.port, Log_1.LogTypes.Start, 0);
@@ -163,9 +144,12 @@ class Application {
         }
         else {
             Log_1.Log.line("Exiting child process...", Log_1.LogTypes.Std, 0);
-            $clusterCmds.invoke($clusterCmds.Commands.ExitApp);
+            Cluster_1.cluster.invoke(Cluster_1.ClusterCommands.ExitApp);
         }
         process.exit(0);
+    }
+    workersReady() {
+        Log_1.Log.line("Server is running on port " + this.port, Log_1.LogTypes.Start, 0);
     }
     beforeRunWhenReadyCallback() {
         if (!this.templateAdapter) {
@@ -183,65 +167,7 @@ class Application {
         });
     }
     initClustering() {
-        if ($cluster.isMaster) {
-            if (Jumbo.config.clustering && typeof Jumbo.config.clustering.numberOfWorkers == "number"
-                && !DEBUG_MODE) {
-                for (let c = 0; c < CPU_COUNT; c++) {
-                    $cluster.fork();
-                }
-                $cluster.on("exit", (worker, code, signal) => {
-                    this.clusterOnExit(worker, code, signal);
-                }).on("message", (worker, message) => {
-                    this.clusterMasterOnMessage(worker, message);
-                });
-            }
-        }
-        else {
-            process.on("message", (message) => {
-                this.clusterWorkerOnMessage(message);
-            });
-        }
-    }
-    clusterOnExit(worker, code, signal) {
-        Log_1.Log.line(`Worker ${worker.id} exited with code: ${code == undefined ? (signal || "unknown") : code}`);
-        if (code == 0)
-            return;
-        setTimeout(() => {
-            Log_1.Log.line(`Reforking worker ${worker.id}`);
-            $cluster.fork();
-        }, 1000);
-    }
-    clusterWorkerOnMessage(message) {
-        if (message.hasOwnProperty("exit")) {
-            process.exit(message["exit"]);
-        }
-    }
-    clusterMasterOnMessage(worker, message) {
-        Log_1.Log.line("[Worker " + worker.id + "] sent message: " + JSON.stringify(message), Log_1.LogTypes.Std, Log_1.LogLevels.TalkativeCluster);
-        switch (message.invokeAction) {
-            case $clusterCmds.Commands.Log:
-                Log_1.Log.line(message.invokeData.message, message.invokeData.type, message.invokeData.level);
-                break;
-            case $clusterCmds.Commands.WorkerReady:
-                this.numberOfWorkerReady++;
-                if (this.numberOfWorkerReady == CPU_COUNT) {
-                    Log_1.Log.line("Server is running on port " + this.port, Log_1.LogTypes.Start, 0);
-                }
-                break;
-            case $clusterCmds.Commands.ExitApp:
-                Application.exit();
-                break;
-            case $clusterCmds.Commands.RestartWorker:
-                $cluster.fork().on("online", () => {
-                    setTimeout(() => {
-                        worker.send({ exit: 0 });
-                    }, 1000);
-                });
-                break;
-            default:
-                Log_1.Log.warning("Not implemented cluster message (code " + message.invokeAction + ").");
-                break;
-        }
+        Cluster_1.cluster.initClustering();
     }
     createServer() {
         this.prepareRequestsSetting();
@@ -333,14 +259,14 @@ class Application {
         }
     }
     async checkStaticFileRequest(request, response) {
-        if (request.method == "GET" && request.url.slice(0, 7) == "/public") {
+        if (request.method == "GET" && request.url.slice(0, 7) === "/public") {
             let url = decodeURI(request.url);
             return await new Promise((resolve, reject) => {
                 this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size, headers) => {
                     try {
                         if (error) {
                             this.displayError(request, response, {
-                                status: 404,
+                                statusCode: 404,
                                 message: "File '" + url + "' error. " + error.message
                             });
                             return resolve(false);
@@ -457,7 +383,7 @@ class Application {
     async procUrlParseError(match, request, response, jResponse) {
         if (match == null || !match.redirectTo) {
             return this.displayError(request, response, {
-                status: 404,
+                statusCode: 404,
                 message: `Page not found. Requested URL '${request.url}'`
             });
         }
@@ -475,18 +401,18 @@ class Application {
             return session;
         }
         if (Jumbo.config.session.justInMemory === true) {
-            return undefined;
+            return {};
         }
         return await new Promise(resolve => {
             $fs.readFile($path.join(Jumbo.SESSION_DIR, jRequest.sessionId + ".session"), "utf-8", (err, sessJson) => {
                 if (!err) {
                     try {
-                        resolve(JSON.parse(sessJson));
+                        resolve(JSON.parse(sessJson) || {});
                     }
                     catch (e) {
                     }
                 }
-                resolve(undefined);
+                resolve({});
             });
         });
     }
@@ -495,7 +421,7 @@ class Application {
         let req = new Request_1.Request(request);
         req._bindLocation(match.location, target.subApp, target.controller, target.action, match.params);
         req.beginTime = requestBeginTime;
-        req.locale = match.locale;
+        req.locale = match.locale || this.locator.requestLocaleOrDefault(request);
         return req;
     }
     checkLongFormatUrl(req, match) {
@@ -530,7 +456,7 @@ class Application {
                         end = true;
                         form.emit("error", "The post data received is too big");
                         await this.displayError(req.request, res.response, {
-                            status: 413,
+                            statusCode: 413,
                             message: "The post data received is too big"
                         });
                         req.request.connection.destroy();
@@ -622,7 +548,12 @@ class Application {
         let req = controller.request;
         let res = controller.response;
         if (actionResult === null) {
+            controller.exited = true;
             return res.response.end("");
+        }
+        if (actionResult.constructor == ErrorResult_1.ErrorResult) {
+            controller.exited = true;
+            return this.displayError(req.request, res.response, actionResult);
         }
         if (actionResult.constructor == ViewResult_1.ViewResult) {
             actionResult.data.lang = controller.request.locale.slice(0, 2);
@@ -653,7 +584,12 @@ class Application {
         if (viewResult.view) {
             tplCacheFileName += viewResult.view.replace(/[^\w\\\/]/g, "").replace(/[\/\\]/g, "-");
             if (viewResult.partialView) {
-                tplCacheFileName += "_single-template";
+                if (viewResult.snippet) {
+                    tplCacheFileName += "_snippet-" + viewResult.snippet;
+                }
+                else {
+                    tplCacheFileName += "_partial-template";
+                }
             }
         }
         else {
@@ -671,8 +607,10 @@ class Application {
         }
         let tplCacheFile = this.getTemplateCacheName(viewResult, req);
         if (viewResult.rawTemplate) {
+            let appPath = this.getAppPath(req);
+            let templatePath = this.getTemplatePath(appPath, viewResult);
             return await new Promise((resolve, reject) => {
-                $fs.readFile(tplCacheFile, "utf-8", (err, content) => {
+                $fs.readFile(templatePath, "utf-8", (err, content) => {
                     if (err) {
                         return reject(err);
                     }
@@ -749,11 +687,8 @@ class Application {
         }
     }
     prepareRenderViewProperties(req, viewResult) {
-        let appPath = Jumbo.APP_DIR;
-        if (req.subApp != ControllerFactory_1.MAIN_SUBAPP_NAME) {
-            appPath = $path.join(Jumbo.APP_DIR, "sub-apps", this.controllerFactory.getSubAppInfo(req.subApp).dir);
-        }
-        let templatePath = $path.join(appPath, "templates", viewResult.view + this.templateAdapter.extension);
+        let appPath = this.getAppPath(req);
+        let templatePath = this.getTemplatePath(appPath, viewResult);
         let layoutPath = null;
         let dynamicLayout = null;
         if (viewResult.snippet) {
@@ -774,6 +709,15 @@ class Application {
             }
         }
         return { templatePath, layoutPath, dynamicLayout };
+    }
+    getTemplatePath(appPath, viewResult) {
+        return $path.join(appPath, "templates", viewResult.view + this.templateAdapter.extension);
+    }
+    getAppPath(req) {
+        if (req.subApp == ControllerFactory_1.MAIN_SUBAPP_NAME) {
+            return Jumbo.APP_DIR;
+        }
+        return $path.join(Jumbo.APP_DIR, "sub-apps", this.controllerFactory.getSubAppInfo(req.subApp).dir);
     }
     cacheViewTemplate(tplCacheFile, compiledtemplate) {
         if (this.memoryCache[tplCacheFile]) {
@@ -813,7 +757,7 @@ class Application {
         let ex = errObj.error || errObj;
         let errorObj = {
             message: errObj.message || ex.message,
-            status: errObj.status || ex.statusCode || 500,
+            status: ex.statusCode || errObj.status || 500,
             stack: ex.stack
         };
         Log_1.Log.warning("Error while serving " + request.url + "; Client " + this.getClientIP(request) + "; "
@@ -821,7 +765,7 @@ class Application {
         if (response.finished)
             return;
         if (DEVELOPMENT_MODE && (ex instanceof Error || ex instanceof Exception_1.Exception)) {
-            return this.renderException(errorObj.message || ex.message, ex, errorObj.status || 500, request, response);
+            return this.renderException(errorObj.message, ex, errorObj.status, request, response);
         }
         let errFile = $path.resolve(Jumbo.ERR_DIR, errorObj.status + ".html");
         let errExists = await new Promise(resolve => {

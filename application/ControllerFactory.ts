@@ -557,24 +557,26 @@ export class ControllerFactory
 	 */
 	private clearRequireCache()
 	{
-		const {uncache} = require("jumbo-core/utils/require");
+		// TODO: Do or not?
 
-		for (let modName of Object.keys(require.cache))
-		{
-			let mod = require.cache[modName];
-
-			// delete all cached modules from APP_DIR
-			if (mod && mod.filename.slice(0, Jumbo.APP_DIR.length).toLowerCase()
-				== Jumbo.APP_DIR.toLowerCase() && mod.filename.charAt(Jumbo.APP_DIR.length) != ".")
-			{
-				uncache(modName);
-			}
-		}
-
-		if (Jumbo.config.jumboDebugMode)
-		{
-			console.log("[DEBUG] require.cache cleared");
-		}
+		// const {uncache} = require("jumbo-core/utils/require");
+		//
+		// for (let modName of Object.keys(require.cache))
+		// {
+		// 	let mod = require.cache[modName];
+		//
+		// 	// delete all cached modules from APP_DIR
+		// 	if (mod && mod.filename.slice(0, Jumbo.APP_DIR.length).toLowerCase()
+		// 		== Jumbo.APP_DIR.toLowerCase() && mod.filename.charAt(Jumbo.APP_DIR.length) != ".")
+		// 	{
+		// 		uncache(modName);
+		// 	}
+		// }
+		//
+		// if (Jumbo.config.jumboDebugMode)
+		// {
+		// 	console.log("[DEBUG] require.cache cleared");
+		// }
 	}
 
 	//endregion

@@ -1,29 +1,6 @@
 ///<reference path="./node_modules/@types/node/index.d.ts"/>
 
-
-
-// declare module JumboFramework {
-// 	export interface Jumbo {
-// 		// Jumbo: any;
-// 		// Application: any;
-// 		// App: any;
-// 	}
-// }
-
-//
-// declare module Jumbo {
-// 	export interface Application {}
-// }
-//
-// // declare global {
-// //     interface Jumbo {}
-// // }
-//
-
-// import {Application} from "./application/Application";
-// import {Application} from "./application/Application";
-
-declare interface JumboNamespace {
+export interface JumboNamespace {
 	config: any,
 	CONFIG_PATH: string,
 	CFG_PATH: string,
@@ -47,7 +24,7 @@ declare interface JumboNamespace {
 	Exceptions: any,
 	Ioc: any,
 	Logging: any,
-	Sync: any,
+	Results: any,
 	Utils: any,
 	Validation: any,
 }
@@ -55,14 +32,6 @@ declare interface JumboNamespace {
 declare module NodeJS {
     interface Global {
 	    Jumbo: JumboNamespace;
-	    Application: Application;
-	    // App: any;
+	    Application: any;
     }
 }
-
-declare const Jumbo: JumboNamespace;
-declare function nameof(obj: any): string;
-// declare const Application: Application;
-// declare var App: any;
-//
-// declare namespace Core {}

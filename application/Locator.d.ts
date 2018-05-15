@@ -11,11 +11,21 @@ export declare class Locator {
     private delimiter;
     private delimiterEscaped;
     private urlAliases;
-    static readonly ParamType: {};
-    static readonly Method: {};
+    static readonly ParamType: {
+        Integer: RegExp;
+        StringId: RegExp;
+        Number: RegExp;
+    };
+    static readonly Method: {
+        POST: string;
+        PUT: string;
+        GET: string;
+        DELETE: string;
+    };
     static readonly defaultController: string;
     static readonly defaultAction: string;
     static readonly instance: Locator;
+    static readonly defaultLocationName: string;
     setHost(host: string): void;
     setDelimiter(delimiter: string): void;
     setMainSubdomain(subName: string): void;
@@ -25,6 +35,7 @@ export declare class Locator {
     addDefaultLocation(location: string): void;
     generateUrl(controller: ControllerNameString, action: ActionNameString, slashParams?: object[], queryParams?: object, subApp?: string, lang?: string, protocol?: string, host?: string): string;
     generateLocationUrl(locationName: any, controller?: any, action?: any, params?: {}, subApp?: string, lang?: any, protocol?: string, host?: string): string;
+    requestLocaleOrDefault(request: $http.IncomingMessage): string;
     parseUrl(request: $http.IncomingMessage): ILocatorMatch;
     addUrlAlias(url: any, alias: any): void;
     getUrlForAlias(alias: any): string;

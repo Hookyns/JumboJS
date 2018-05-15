@@ -8,7 +8,7 @@
 import * as $fs from "fs";
 import * as $path from "path";
 import * as $cluster from "cluster";
-import * as $clusterCmds from "../cluster/cluster-messaging";
+import {cluster, ClusterCommands} from "../cluster/Cluster";
 
 //endregion
 
@@ -159,7 +159,7 @@ export class Log
 			else
 			{
 				message = "[Worker " + $cluster.worker.id + "] " + message;
-				$clusterCmds.invoke($clusterCmds.Commands.Log, {
+				cluster.invoke(ClusterCommands.Log, {
 					message: message,
 					type: type,
 					level: level
@@ -202,6 +202,11 @@ export class Log
 			{
 				this.which = this.curTime().replace(/[: ]/g, "-");
 				this.isInitiated = true;
+
+				// Register cluster handler for Log cmd
+				cluster.on(ClusterCommands.Log, (event) => {
+					Log.line(event.data.message, event.data.type, event.data.level);
+				});
 			}
 		}
 	}

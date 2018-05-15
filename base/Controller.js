@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const ErrorResult_1 = require("../results/ErrorResult");
 if (Jumbo.config.jumboDebugMode) {
     console.log("[DEBUG] REQUIRE: Controller");
 }
@@ -97,6 +98,7 @@ class Controller {
         if (reqTypeHeader) {
             let action = XJUMBO_REQUEST_ACTION_MAP[reqTypeHeader];
             if (action) {
+                this.response.headers["Vary"] = X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME;
                 return action(this, viewOrData, data);
             }
         }
@@ -128,11 +130,7 @@ class Controller {
         this.exit();
     }
     error(message, statusCode = 500, error = undefined) {
-        return {
-            status: statusCode,
-            message: message,
-            error: error
-        };
+        return new ErrorResult_1.ErrorResult(message, statusCode, error);
     }
     fileDownload(filePath, newName, contentType) {
         if (!$fs) {

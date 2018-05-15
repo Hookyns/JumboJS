@@ -6,13 +6,14 @@ if (Jumbo.config.jumboDebugMode) {
 class Url {
     constructor(request) {
         this.options = {};
+        this.request = request;
         this.options = {
             action: request.action,
             controller: request.controller,
             subApp: request.subApp,
             location: request.location.locationName,
             locale: request.locale,
-            params: {}
+            params: null
         };
     }
     action(action, controller, params) {
@@ -45,12 +46,11 @@ class Url {
     }
     getUrl() {
         const opt = this.options;
-        if (this.options.location) {
-            return Locator_1.Locator.instance.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
+        opt.location = opt.location || Locator_1.Locator.defaultLocationName;
+        if (opt.params == null) {
+            opt.params = {};
         }
-        else {
-            return Locator_1.Locator.instance.generateUrl(opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
-        }
+        return Locator_1.Locator.instance.generateLocationUrl(opt.location, opt.controller, opt.action, opt.params, opt.subApp, opt.locale);
     }
 }
 exports.Url = Url;
