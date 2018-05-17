@@ -53,11 +53,6 @@ class ControllerFactory {
     getActionName(action, controllerId, subAppId = exports.MAIN_SUBAPP_NAME, method = "action") {
         return this.getActionInfo(this.getActionId(action, method), controllerId, subAppId).name;
     }
-    createController(controllerId, subAppId, scope) {
-        let ctrlInfo = this.getControllerInfo(controllerId, subAppId);
-        let Controller = ctrlInfo.getClass();
-        return scope.resolveUnregistered(Controller);
-    }
     getSubAppInfo(subAppId) {
         let subAppInfo = this.subApp[subAppId];
         if (!subAppInfo)
@@ -77,6 +72,11 @@ class ControllerFactory {
         if (!actionInfo)
             throw new Error(`Action ${actionId} was not found in controller ${controllerId} in sub-app ${subAppId}`);
         return actionInfo;
+    }
+    createController(controllerId, subAppId, scope) {
+        let ctrlInfo = this.getControllerInfo(controllerId, subAppId);
+        let Controller = ctrlInfo.getClass();
+        return scope.resolveUnregistered(Controller);
     }
     getTargetPoint(subApp, controller, action, method = undefined) {
         let controllerId = this.getControllerId(controller);

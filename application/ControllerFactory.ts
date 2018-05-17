@@ -123,7 +123,7 @@ export class ControllerFactory
 	 * @returns {string}
 	 * @throws {Error} Throw error if Sub-App not exists
 	 */
-	getSubAppName(subApp: string): SubAppNameString
+	getSubAppName(subApp: string): FullSubAppNameString
 	{
 		return this.getSubAppInfo(this.getSubAppId(subApp)).name;
 	}
@@ -135,7 +135,7 @@ export class ControllerFactory
 	 * @returns {string}
 	 * @throws {Error} Throw error if controller not exists
 	 */
-	getControllerName(controller: string, subAppId: SubAppIdString = MAIN_SUBAPP_NAME): ControllerNameString
+	getControllerName(controller: string, subAppId: SubAppIdString = MAIN_SUBAPP_NAME): FullControllerNameString
 	{
 		return this.getControllerInfo(this.getControllerId(controller), subAppId).name;
 	}
@@ -150,28 +150,9 @@ export class ControllerFactory
 	 * @throws {Error} Throw error if action not exists
 	 */
 	getActionName(action: string, controllerId: ControllerIdString, subAppId: SubAppIdString = MAIN_SUBAPP_NAME,
-		method: string = "action"): ActionNameString
+		method: string = "action"): FullActionNameString
 	{
 		return this.getActionInfo(this.getActionId(action, method), controllerId, subAppId).name;
-	}
-
-	/**
-	 * Create new instace of specified controller
-	 * @param {string} controllerId
-	 * @param {string} [subAppId]
-	 * @param {Scope} [scope]
-	 * @returns {object | null} Class instance
-	 * @throws {Error} If controller doesn't exist
-	 */
-	createController(controllerId: ControllerIdString, subAppId: SubAppIdString, scope: Scope)
-	{
-		let ctrlInfo = this.getControllerInfo(controllerId, subAppId);
-
-		// Get controller
-		let Controller = ctrlInfo.getClass();
-
-		// Resolve
-		return scope.resolveUnregistered(Controller);
 	}
 
 	// noinspection JSUnusedGlobalSymbols
@@ -218,94 +199,24 @@ export class ControllerFactory
 		return actionInfo;
 	}
 
-	// /**
-	//  * Return name of controller in sub-app
-	//  * @param {String} subApp
-	//  * @param {String} controllerName
-	//  * @returns {String | null}
-	//  */
-	// getSubAppControllerName(subApp, controllerName) {
-	// 	controllerName = this.getControllerId(controllerName);
-	// 	return this.subApp[subApp] && this.subApp[subApp].controllers[controllerName]
-	// 		? this.subApp[subApp].controllers[controllerName].name : null;
-	// }
-	//
-	// /**
-	//  * Return name of action in sub-app controller
-	//  * @param {String} subApp
-	//  * @param {String} controllerName
-	//  * @param {String} actionName
-	//  * @returns {String | null}
-	//  */
-	// getSubAppActionName(subApp, controllerName, actionName) {
-	// 	controllerName = this.getControllerId(controllerName);
-	// 	actionName = this.getActionId(actionName);
-	//
-	// 	return this.subApp[subApp] && this.subApp[subApp].controllers[controllerName]
-	// 	&& this.subApp[subApp].controllers[controllerName].actions[actionName]
-	// 		? this.subApp[subApp].controllers[controllerName].actions[actionName].name : null;
-	// }
-	//
-	// /**
-	//  * Create new instance of sub-app controller
-	//  * @param {String} subApp
-	//  * @param {String} controllerName
-	//  * @returns {Controller | null}
-	//  */
-	// createSubAppController(subApp, controllerName, scope) {
-	// 	controllerName = this.getSubAppControllerName(subApp, controllerName);
-	//
-	// 	// Verify cntrl existance
-	// 	if (!controllerName) throw new Error(`Controller '${controllerName}' cannot be created, it doens't
-	// exists.`);
-	//
-	// 	subApp = this.getSubAppName(subApp);
-	//
-	// 	// Verify subapp existance
-	// 	if (!subApp) throw new Error(`Controller '${controllerName}' cannot be created, subapp ${subApp} doens't
-	// exists.`);  var Controller = App.SubApps[subApp].Controllers[controllerName];  return
-	// scope.resolveUnregistered(Controller); }
+	/**
+	 * Create new instace of specified controller
+	 * @param {string} controllerId
+	 * @param {string} [subAppId]
+	 * @param {Scope} [scope]
+	 * @returns {object | null} Class instance
+	 * @throws {Error} If controller doesn't exist
+	 */
+	createController(controllerId: ControllerIdString, subAppId: SubAppIdString, scope: Scope)
+	{
+		let ctrlInfo = this.getControllerInfo(controllerId, subAppId);
 
-	// /**
-	//  * Test if controller and action exist
-	//  * @param {string} controllerName
-	//  * @param {string} actionName
-	//  * @param {{}} [subApp]
-	//  * @returns {boolean}
-	//  */
-	// targetExists(controllerName, actionName, subApp: string = MAIN_SUBAPP_NAME): Error
-	// {
-	// 	controllerName = this.getControllerId(controllerName);
-	// 	actionName = this.getActionId(actionName);
-	//
-	// 	let sa = this.subApp[subApp];
-	// 	if (!sa) return new Error(`Subapp '${subApp}' doesn't exist.`);
-	//
-	// 	let ctrl = sa.controllers[controllerName];
-	// 	if (!ctrl) return new Error(`Controller '${controllerName}' of sub-app ${subApp} doesn't exist.`);
-	//
-	// 	let act = ctrl.actions[actionName];
-	// 	if (!act)
-	// 	{
-	// 		return new Error(`Action '${actionName}' doesn't exists in ${controllerName} of sub-app ${subApp}.`);
-	// 	}
-	//
-	// 	return null;
-	// }
+		// Get controller
+		let Controller = ctrlInfo.getClass();
 
-	// // noinspection JSMethodCanBeStatic
-	// /**
-	//  * Verify existance of given location in application
-	//  * @param {string} controller
-	//  * @param {string} action
-	//  * @param {string} subApp
-	//  * @param method
-	//  * @throws {Error}
-	//  */
-	// verifyTarget(controller: string, action: string, subApp: string, method: string)
-	// {
-	// 	this.getTargetPoint(subApp, controller, action, method);
-	// }
+		// Resolve
+		return scope.resolveUnregistered(Controller);
+	}
 
 	/**
 	 * Verify existance of given application target point and returns its full names
@@ -356,7 +267,7 @@ export class ControllerFactory
 	 * @param {Function} func
 	 * @returns {Array}
 	 */
-	getFunctionParameters(func)
+	getFunctionParameters(func: Function): any[]
 	{
 		return this.getParameters(func, FUNC_PARAM_REGEX);
 	}

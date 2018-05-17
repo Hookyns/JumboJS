@@ -45,7 +45,7 @@ function searchCache(moduleName, callback) {
 			// run over it
 			mod.children.forEach(function (child) {
 				if (child.id != mod.id) {
-					console.log(mod.id, child.id);
+					// console.log(mod.id, child.id);
 					run(child);
 				}
 			});

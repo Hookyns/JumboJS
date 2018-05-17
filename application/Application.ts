@@ -178,7 +178,7 @@ export class Application
 	 * Return Locator instance
 	 * @returns {Locator}
 	 */
-	public getLocator()
+	public getLocator(): Locator
 	{
 		return this.locator;
 	}
@@ -188,7 +188,7 @@ export class Application
 	 * Return DI Container
 	 * @returns {DIContainer}
 	 */
-	public getDIContainer()
+	public getDIContainer(): DIContainer
 	{
 		return this.diContainer;
 	}
@@ -198,7 +198,12 @@ export class Application
 	 * Set handler for resolving static files
 	 * @param {function} handler
 	 */
-	public setStaticFileResolver(handler)
+	public setStaticFileResolver(handler: (fileName: string,
+		callback: (error: Error,
+			readStream: $fs.ReadStream,
+			mime: string,
+			size: number,
+			headers?: { [key: string]: any }) => void) => void)
 	{
 		this.staticFileResolver = handler;
 	}
@@ -637,9 +642,16 @@ export class Application
 		if (request.method == "GET" && request.url.slice(0, 7) === "/public")
 		{
 			let url = decodeURI(request.url);
+			let filePath = $path.join(Jumbo.BASE_DIR, url);
+
+			// Try to access server files
+			if (filePath.slice(0, Jumbo.PUBLIC_DIR.length) != Jumbo.PUBLIC_DIR) {
+				this.plainResponse(response, "Bad Request", 400);
+				return false;
+			}
 
 			return await new Promise<boolean>((resolve, reject) => {
-				this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size, headers) => {
+				this.staticFileResolver(filePath, (error, fileStream, mime, size, headers) => {
 					try
 					{
 						if (error)

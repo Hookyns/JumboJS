@@ -33,7 +33,6 @@ export declare class Locator {
     addSubdomain(subName: string): void;
     addLocation(locationName: string, location: string, options?: ILocationOptions | null, subApp?: string): void;
     addDefaultLocation(location: string): void;
-    generateUrl(controller: ControllerNameString, action: ActionNameString, slashParams?: object[], queryParams?: object, subApp?: string, lang?: string, protocol?: string, host?: string): string;
     generateLocationUrl(locationName: any, controller?: any, action?: any, params?: {}, subApp?: string, lang?: any, protocol?: string, host?: string): string;
     requestLocaleOrDefault(request: $http.IncomingMessage): string;
     parseUrl(request: $http.IncomingMessage): ILocatorMatch;

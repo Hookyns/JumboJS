@@ -385,72 +385,72 @@ export class Locator
 		}
 	}
 
-	/**
-	 * Generate full URL with protocol and host. Host must be set by setHost().
-	 * @param {string} controller
-	 * @param {string} action
-	 * @param {Array} [slashParams]
-	 * @param {Object} [queryParams]
-	 * @param {string} [subApp]
-	 * @param {string} [lang]
-	 * @param {string} [protocol]
-	 * @param {string} [host]
-	 * @returns {string}
-	 */
-	generateUrl(controller: ControllerNameString, action: ActionNameString, slashParams: object[] = [],
-		queryParams: object = {}, subApp: string = null, lang: string = null, protocol: string = null,
-		host: string = null)
-	{
-		controllerFactory.getTargetPoint(subApp, controller, action);
-
-		let baseUrl = "/";
-
-		if (host || protocol || subApp)
-		{
-			baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
-		}
-
-		if (lang && GLOBALIZATION_ENABLED)
-		{
-			baseUrl += lang + this.delimiter;
-		}
-
-		let queryParamsLength = Object.keys(queryParams).length;
-		let noParams = slashParams.length == 0 && queryParamsLength == 0;
-
-		// Base controller and action - return base URL
-		if (controller == DEFAULT_CONTROLLER
-			&& action == DEFAULT_ACTION && noParams)
-		{
-			return baseUrl;
-		}
-		// Default action - return base URL just with controller
-		else if (action == DEFAULT_ACTION && noParams)
-		{
-			return baseUrl + controller;//.toLowerCase();
-		}
-		else
-		{
-			let url = baseUrl + controller/*.toLowerCase()*/ + this.delimiter + action/*.toLowerCase()*/;
-
-			if (!noParams)
-			{
-				if (slashParams.length === 0) url += this.delimiter;
-
-				for (let i = 0; i < slashParams.length; i++)
-				{
-					url += this.delimiter + slashParams[i];
-				}
-
-				if (queryParamsLength != 0)
-				{
-					url += "&" + $qs.stringify(queryParams);
-				}
-			}
-
-			return url;
-		}
-	}
+	// /**
+	//  * Generate full URL with protocol and host. Host must be set by setHost().
+	//  * @param {string} controller
+	//  * @param {string} action
+	//  * @param {Array} [slashParams]
+	//  * @param {Object} [queryParams]
+	//  * @param {string} [subApp]
+	//  * @param {string} [lang]
+	//  * @param {string} [protocol]
+	//  * @param {string} [host]
+	//  * @returns {string}
+	//  */
+	// generateUrl(controller: ControllerNameString, action: ActionNameString, slashParams: object[] = [],
+	// 	queryParams: object = {}, subApp: string = null, lang: string = null, protocol: string = null,
+	// 	host: string = null)
+	// {
+	// 	controllerFactory.getTargetPoint(subApp, controller, action);
+	//
+	// 	let baseUrl = "/";
+	//
+	// 	if (host || protocol || subApp)
+	// 	{
+	// 		baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
+	// 	}
+	//
+	// 	if (lang && GLOBALIZATION_ENABLED)
+	// 	{
+	// 		baseUrl += lang + this.delimiter;
+	// 	}
+	//
+	// 	let queryParamsLength = Object.keys(queryParams).length;
+	// 	let noParams = slashParams.length == 0 && queryParamsLength == 0;
+	//
+	// 	// Base controller and action - return base URL
+	// 	if (controller == DEFAULT_CONTROLLER
+	// 		&& action == DEFAULT_ACTION && noParams)
+	// 	{
+	// 		return baseUrl;
+	// 	}
+	// 	// Default action - return base URL just with controller
+	// 	else if (action == DEFAULT_ACTION && noParams)
+	// 	{
+	// 		return baseUrl + controller;//.toLowerCase();
+	// 	}
+	// 	else
+	// 	{
+	// 		let url = baseUrl + controller/*.toLowerCase()*/ + this.delimiter + action/*.toLowerCase()*/;
+	//
+	// 		if (!noParams)
+	// 		{
+	// 			if (slashParams.length === 0) url += this.delimiter;
+	//
+	// 			for (let i = 0; i < slashParams.length; i++)
+	// 			{
+	// 				url += this.delimiter + slashParams[i];
+	// 			}
+	//
+	// 			if (queryParamsLength != 0)
+	// 			{
+	// 				url += "&" + $qs.stringify(queryParams);
+	// 			}
+	// 		}
+	//
+	// 		return url;
+	// 	}
+	// }
 
 	/**
 	 * Create URL from specified Location
@@ -774,6 +774,7 @@ export class Locator
 	 */
 	private getSubAppFromRequest(request)
 	{
+		// TODO: Rework, extractSubApp should return null if there is no subdomain in URL -> then it's main; if there is main subdomain in URL - redirect, it's duplicated content (SEO)
 		let subApp = this.extractSubApp(request);
 
 		if (subApp === this.main)

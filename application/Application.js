@@ -261,8 +261,13 @@ class Application {
     async checkStaticFileRequest(request, response) {
         if (request.method == "GET" && request.url.slice(0, 7) === "/public") {
             let url = decodeURI(request.url);
+            let filePath = $path.join(Jumbo.BASE_DIR, url);
+            if (filePath.slice(0, Jumbo.PUBLIC_DIR.length) != Jumbo.PUBLIC_DIR) {
+                this.plainResponse(response, "Bad Request", 400);
+                return false;
+            }
             return await new Promise((resolve, reject) => {
-                this.staticFileResolver($path.join(Jumbo.BASE_DIR, url), (error, fileStream, mime, size, headers) => {
+                this.staticFileResolver(filePath, (error, fileStream, mime, size, headers) => {
                     try {
                         if (error) {
                             this.displayError(request, response, {

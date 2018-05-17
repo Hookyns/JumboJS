@@ -20,7 +20,7 @@ class Response {
             newCookie += "domain=" + domain + ";";
         }
         if (path) {
-            newCookie += "$path=" + path + ";";
+            newCookie += "path=" + path + ";";
         }
         cookies.push(newCookie);
         this.headers["Set-Cookie"] = cookies;

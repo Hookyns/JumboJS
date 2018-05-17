@@ -155,39 +155,6 @@ class Locator {
             this.locations.set(key, item);
         }
     }
-    generateUrl(controller, action, slashParams = [], queryParams = {}, subApp = null, lang = null, protocol = null, host = null) {
-        controllerFactory.getTargetPoint(subApp, controller, action);
-        let baseUrl = "/";
-        if (host || protocol || subApp) {
-            baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
-        }
-        if (lang && GLOBALIZATION_ENABLED) {
-            baseUrl += lang + this.delimiter;
-        }
-        let queryParamsLength = Object.keys(queryParams).length;
-        let noParams = slashParams.length == 0 && queryParamsLength == 0;
-        if (controller == exports.DEFAULT_CONTROLLER
-            && action == exports.DEFAULT_ACTION && noParams) {
-            return baseUrl;
-        }
-        else if (action == exports.DEFAULT_ACTION && noParams) {
-            return baseUrl + controller;
-        }
-        else {
-            let url = baseUrl + controller + this.delimiter + action;
-            if (!noParams) {
-                if (slashParams.length === 0)
-                    url += this.delimiter;
-                for (let i = 0; i < slashParams.length; i++) {
-                    url += this.delimiter + slashParams[i];
-                }
-                if (queryParamsLength != 0) {
-                    url += "&" + $qs.stringify(queryParams);
-                }
-            }
-            return url;
-        }
-    }
     generateLocationUrl(locationName, controller = null, action = null, params = {}, subApp = null, lang = null, protocol = null, host = null) {
         let location = this.locations.get(locationName);
         if (!location) {

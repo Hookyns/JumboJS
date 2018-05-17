@@ -80,7 +80,7 @@ export class Response
 
 		if (path)
 		{
-			newCookie += "$path=" + path + ";";
+			newCookie += "path=" + path + ";";
 		}
 
 		cookies.push(newCookie);

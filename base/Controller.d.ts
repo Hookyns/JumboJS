@@ -1,22 +1,25 @@
 import { ErrorResult } from "../results/ErrorResult";
 export declare class Controller {
-    request: Request;
-    response: Response;
-    session: {
+    public request: Request;
+    public response: Response;
+    public session: {
         [key: string]: any;
     };
-    scope: Scope;
-    exited: boolean;
-    crossRequestData: any;
-    static clientMessagesId: string;
+    public scope: Scope;
+    public exited: boolean;
+    public crossRequestData: any;
+    public static clientMessagesId: string;
     protected readonly url: Url;
-    _initController(request: Request, response: Response, session: {
+
+    public _initController(request: Request, response: Response, session: {
         [key: string]: any;
     }, scope: Scope): void;
-    _clearOldCrossRequestData(): void;
+    public _clearOldCrossRequestData(): void;
+
     protected static createBaseViewResult(viewOrData: string | {}, data: {}): ViewResult;
-    exit(): void;
-    addMessage(message: string, messageType: any): void;
+    protected exit(): void;
+    
+    protected addMessage(message: string, messageType: any): void;
     protected renderView(viewOrData: any, data?: any): ViewResult;
     protected partialView(partialViewOrData?: any, data?: any): ViewResult;
     protected template(view?: any): ViewResult;

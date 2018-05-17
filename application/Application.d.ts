@@ -1,3 +1,4 @@
+import * as $fs from "fs";
 import * as $http from "http";
 export declare class Application {
     private server;
@@ -18,7 +19,9 @@ export declare class Application {
     serverIsRunning: boolean;
     getLocator(): Locator;
     getDIContainer(): DIContainer;
-    setStaticFileResolver(handler: any): void;
+    setStaticFileResolver(handler: (fileName: string, callback: (error: Error, readStream: $fs.ReadStream, mime: string, size: number, headers?: {
+        [key: string]: any;
+    }) => void) => void): void;
     setBlockIpListener(listener: (clientIp: string) => void): void;
     static readonly instance: Application;
     setTemplateAdapter(adapter: ITemplateAdapter): void;

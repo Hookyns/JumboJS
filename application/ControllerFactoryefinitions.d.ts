@@ -59,19 +59,19 @@ declare type FullSubAppNameString = string;
 //region Interfaces
 
 declare interface ISubAppInfo {
-	name: string,
+	name: FullSubAppNameString,
 	dir: string,
 	controllers: {[controllerName: string]: IControllerInfo}
 }
 
 declare interface IActionInfo {
-	name: string,
+	name: FullActionNameString,
 	params: Array<string>,
 	method: string | null
 }
 
 declare interface IControllerInfo {
-	name: string,
+	name: ControllerNameString,
 	params: Array<string>,
 	getClass: () => Function,
 	actions: {[actionName: string]: IActionInfo}
