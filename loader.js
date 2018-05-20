@@ -99,6 +99,7 @@ class Loader {
             $path.join(PROJECT_DIR, "app", "controllers"),
             $path.join(PROJECT_DIR, "app", "sub-apps"),
             $path.join(PROJECT_DIR, "app", "services"),
+            $path.join(PROJECT_DIR, "app", "facades"),
             $path.join(PROJECT_DIR, "app", "models"),
             $path.join(PROJECT_DIR, "app", "templates"),
             $path.join(PROJECT_DIR, "data"),
