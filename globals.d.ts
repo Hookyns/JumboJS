@@ -17,6 +17,7 @@ import * as ValidatableModule from "validation/Validatable";
 declare global
 {
 	export function nameof(obj: any): string;
+	export function inject(serviceName: string): (target: Object, property: string | Symbol) => void;
 
 	module Jumbo
 	{

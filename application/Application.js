@@ -500,26 +500,14 @@ class Application {
         if (JUMBO_DEBUG_MODE) {
             console.log("[DEBUG] Application.callBeforeActions() called");
         }
-        let beforeActionsResult;
-        let result;
-        let cntrlParent = Object.getPrototypeOf(ctrl.constructor);
-        if (cntrlParent.prototype[BEFORE_ACTION_NAME]) {
-            beforeActionsResult = cntrlParent.prototype[BEFORE_ACTION_NAME].call(ctrl);
-            if (beforeActionsResult.constructor != Promise) {
-                throw new Error(`Action 'beforeActions' in ${cntrlParent.name} `
-                    + "is not async method (does not return Promise).");
-            }
-            result = await beforeActionsResult;
-            if (result != undefined)
-                return result;
-        }
-        if (ctrl[BEFORE_ACTION_NAME]) {
-            beforeActionsResult = ctrl[BEFORE_ACTION_NAME]();
+        let beforeActions = ctrl[BEFORE_ACTION_NAME];
+        if (beforeActions) {
+            let beforeActionsResult = beforeActions();
             if (beforeActionsResult.constructor != Promise) {
                 throw new Error(`Action 'beforeActions' in ${ctrl.constructor.name} `
                     + "is not async method (does not return Promise).");
             }
-            result = await beforeActionsResult;
+            let result = await beforeActionsResult;
             if (result != undefined)
                 return result;
         }
@@ -556,7 +544,13 @@ class Application {
             controller.exited = true;
             return res.response.end("");
         }
-        if (actionResult.constructor == ErrorResult_1.ErrorResult) {
+        if (actionResult.constructor === Object) {
+            return Controller_1.Controller.prototype.json.call(controller, actionResult);
+        }
+        if (actionResult.constructor === String) {
+            return Controller_1.Controller.prototype.data.call(controller, actionResult, "text/plain");
+        }
+        if (actionResult.constructor === ErrorResult_1.ErrorResult || actionResult.constructor === Error || actionResult.constructor === Exception_1.Exception) {
             controller.exited = true;
             return this.displayError(req.request, res.response, actionResult);
         }
@@ -815,6 +809,7 @@ const DIContainer_1 = require("jumbo-core/ioc/DIContainer");
 const Log_1 = require("jumbo-core/logging/Log");
 const Response_1 = require("jumbo-core/application/Response");
 const Request_1 = require("jumbo-core/application/Request");
+const Controller_1 = require("jumbo-core/base/Controller");
 if (Jumbo.config.jumboDebugMode) {
     console.log("[DEBUG] REQUIRE: Application END");
 }

@@ -645,7 +645,8 @@ export class Application
 			let filePath = $path.join(Jumbo.BASE_DIR, url);
 
 			// Try to access server files
-			if (filePath.slice(0, Jumbo.PUBLIC_DIR.length) != Jumbo.PUBLIC_DIR) {
+			if (filePath.slice(0, Jumbo.PUBLIC_DIR.length) != Jumbo.PUBLIC_DIR)
+			{
 				this.plainResponse(response, "Bad Request", 400);
 				return false;
 			}
@@ -1105,31 +1106,33 @@ export class Application
 			console.log("[DEBUG] Application.callBeforeActions() called");
 		}
 
-		let beforeActionsResult;
-		let result;
-		let cntrlParent = Object.getPrototypeOf(ctrl.constructor); // will return Parent class
+		// let beforeActionsResult;
+		// let result;
+		// let cntrlParent = Object.getPrototypeOf(ctrl.constructor); // will return Parent class
+		//
+		// if (cntrlParent.prototype[BEFORE_ACTION_NAME])
+		// {
+		// 	beforeActionsResult = cntrlParent.prototype[BEFORE_ACTION_NAME].call(ctrl);
+		// 	if (beforeActionsResult.constructor != Promise)
+		// 	{
+		// 		throw new Error(`Action 'beforeActions' in ${cntrlParent.name} `
+		// 			+ "is not async method (does not return Promise).");
+		// 	}
+		// 	result = await beforeActionsResult;
+		// 	if (result != undefined) return result;
+		// }
 
-		if (cntrlParent.prototype[BEFORE_ACTION_NAME])
-		{
-			beforeActionsResult = cntrlParent.prototype[BEFORE_ACTION_NAME].call(ctrl);
-			if (beforeActionsResult.constructor != Promise)
-			{
-				throw new Error(`Action 'beforeActions' in ${cntrlParent.name} `
-					+ "is not async method (does not return Promise).");
-			}
-			result = await beforeActionsResult;
-			if (result != undefined) return result;
-		}
+		let beforeActions = ctrl[BEFORE_ACTION_NAME];
 
-		if (ctrl[BEFORE_ACTION_NAME])
+		if (beforeActions)
 		{
-			beforeActionsResult = ctrl[BEFORE_ACTION_NAME]();
+			let beforeActionsResult = beforeActions();
 			if (beforeActionsResult.constructor != Promise)
 			{
 				throw new Error(`Action 'beforeActions' in ${ctrl.constructor.name} `
 					+ "is not async method (does not return Promise).");
 			}
-			result = await beforeActionsResult;
+			let result = await beforeActionsResult;
 			if (result != undefined) return result;
 		}
 	}
@@ -1196,9 +1199,22 @@ export class Application
 			return res.response.end("");
 		}
 
-		if (actionResult.constructor == ErrorResult)
+		// Plain object was returned, return it as data
+		if (actionResult.constructor === Object)
 		{
-            controller.exited = true;
+			return Controller.prototype.json.call(controller, <Object>actionResult);
+		}
+
+		// Plain text returned
+		if (actionResult.constructor === String)
+		{
+			return Controller.prototype.data.call(controller, <Object>actionResult, "text/plain");
+		}
+
+		// Error returned
+		if (actionResult.constructor === ErrorResult || actionResult.constructor === Error || actionResult.constructor === Exception)
+		{
+			controller.exited = true;
 			return this.displayError(req.request, res.response, <ErrorResult><any>actionResult);
 		}
 
@@ -1612,7 +1628,7 @@ export class Application
 	 * Return error page to client; try to find <errCode>.html in data/errors
 	 * @param request
 	 * @param response
-	 * @param {{status: Number, message: String, error: Error} | Error | Exception} errObj
+	 * @param {Error | Exception | ErrorResult} errObj
 	 */
 	private async displayError(request: $http.IncomingMessage, response: $http.ServerResponse, errObj)
 	{

@@ -3,7 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 if (Jumbo.config.jumboDebugMode) {
     console.log("[DEBUG] REQUIRE: DIContainer");
 }
-const uuid = require("uuid/v1");
 const LifetimeScope = {
     SingleInstance: "singleinstance",
     ScopeInstance: "scopeinstance",
@@ -15,6 +14,7 @@ let controllerFactory = null;
 class DIContainer {
     constructor() {
         this.registeredTypes = {};
+        this.propertyInjectionTypes = {};
         if (new.target != DIContainerActivator) {
             throw new Error("You cannot call private constructor!");
         }
@@ -40,7 +40,8 @@ class DIContainer {
             isExpr: !expr.prototype,
             params: null,
             scope: scope,
-            instance: null
+            instance: null,
+            injectablePropertie: null
         };
     }
     resolveArguments(regType, _scope = null) {
@@ -48,7 +49,7 @@ class DIContainer {
             let type = regType.isExpr ? regType.expr() : regType.expr;
             regType.params = controllerFactory.getConstructorParameters(type.prototype.constructor);
         }
-        if (regType.params && regType.params.length == 0) {
+        if (regType.params.length === 0) {
             return [];
         }
         let args = [];
@@ -66,6 +67,8 @@ class DIContainer {
             }
         }
         return args;
+    }
+    resolveInjectableProperties(type, regType, instance) {
     }
     resolve(name, _scope = null) {
         if (!this.registeredTypes[name]) {
@@ -100,6 +103,9 @@ class DIContainer {
             else if (_scope !== null && regType.scope === DIContainer.LifetimeScope.ScopeInstance) {
                 _scope.instances[name] = instance;
             }
+            if (regType.injectablePropertie !== false) {
+                this.resolveInjectableProperties(type, regType, instance);
+            }
             return instance;
         }
         catch (e) {
@@ -110,18 +116,31 @@ class DIContainer {
     resolveUnregistered(type, _scope = null) {
         let name = type.__diContainerUid;
         if (!name) {
-            name = type.__diContainerUid = uuid();
+            name = type.__diContainerUid = Symbol(type.name || undefined);
             if (!this.registeredTypes[name]) {
                 this.register(type, name, DIContainer.LifetimeScope.InstancePerResolve);
             }
         }
         return this.resolve(name, _scope);
     }
+    registerPropertyInjection(target, property, serviceName) {
+        let symbol = target.__diContainerInjectablePropertyUid;
+        if (!symbol) {
+            symbol = target.__diContainerInjectablePropertyUid = Symbol(target.name || undefined);
+        }
+        let info = this.propertyInjectionTypes[symbol] || (this.propertyInjectionTypes[symbol] = {});
+        info[property] = serviceName;
+    }
 }
 exports.DIContainer = DIContainer;
 class DIContainerActivator extends DIContainer {
 }
 const Log_1 = require("../logging/Log");
+global.inject = function (serviceName) {
+    return function (target, property) {
+        DIContainer.instance.registerPropertyInjection(target, property, serviceName);
+    };
+};
 if (Jumbo.config.jumboDebugMode) {
     console.log("[DEBUG] REQUIRE: DIContainer END");
 }

@@ -33,26 +33,7 @@ class Controller {
         this.request = request;
         this.response = response;
         this.scope = scope;
-        this.crossRequestData = new Proxy({}, {
-            get: function (obj, key) {
-                if (!crossRequestDataStorage.hasOwnProperty(request.sessionId)) {
-                    return undefined;
-                }
-                return crossRequestDataStorage[request.sessionId][key];
-            },
-            set: function (obj, key, value) {
-                if (!crossRequestDataStorage.hasOwnProperty(request.sessionId)) {
-                    crossRequestDataStorage[request.sessionId] = {};
-                }
-                return crossRequestDataStorage[request.sessionId][key] = value;
-            },
-            getOwnPropertyDescriptor: function (obj, key) {
-                if (!crossRequestDataStorage.hasOwnProperty(request.sessionId)) {
-                    return undefined;
-                }
-                return Object.getOwnPropertyDescriptor(crossRequestDataStorage[request.sessionId], key);
-            }
-        });
+        this.crossRequestData = {};
     }
     _clearOldCrossRequestData() {
         if (!crossRequestDataStorage.hasOwnProperty(this.request.sessionId)) {
@@ -133,6 +114,7 @@ class Controller {
         return new ErrorResult_1.ErrorResult(message, statusCode, error);
     }
     fileDownload(filePath, newName, contentType) {
+        this.exited = true;
         if (!$fs) {
             $fs = require("fs");
         }
@@ -155,7 +137,6 @@ class Controller {
             this.response.headers["Content-Type"] = stats.size;
             this.response.response.writeHead(200, this.response.headers);
             $fs.createReadStream(filePath).pipe(this.response.response);
-            this.exit();
         });
     }
     redirect(url) {

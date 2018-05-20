@@ -66,7 +66,8 @@ export class Controller
 
 	/**
 	 * Data stored to next request
-	 * @type {Proxy}
+	 * @description Data stored in this object will be cleared after view render. It can hold data eg. 10 requests.
+	 * @type {{}}
 	 */
 	crossRequestData: any = null;
 
@@ -116,7 +117,7 @@ export class Controller
 		this.response = response;
 		this.scope = scope;
 
-		this.crossRequestData = new Proxy({}, {
+		this.crossRequestData = {};/*new Proxy({}, {
 			get: function (obj, key) {
 				if (!crossRequestDataStorage.hasOwnProperty(request.sessionId))
 				{
@@ -141,7 +142,7 @@ export class Controller
 
 				return Object.getOwnPropertyDescriptor(crossRequestDataStorage[request.sessionId], key);
 			}
-		});
+		});*/
 	}
 
 	// noinspection JSUnusedLocalSymbols
@@ -306,7 +307,7 @@ export class Controller
 	 * @param data
 	 * @param {String} [type] Content-type
 	 */
-	protected data(data, type = "text/plain")
+	public data(data, type = "text/plain")
 	{
 		if (type && type.trim().length != 0)
 		{
@@ -324,7 +325,7 @@ export class Controller
 	 * Ends request with JSON result
 	 * @param {Object} jsonObj
 	 */
-	protected json(jsonObj)
+	public json(jsonObj)
 	{
 		this.data(JSON.stringify(jsonObj), "application/json");
 		this.exit();
@@ -338,7 +339,7 @@ export class Controller
 	 * @param [statusCode] default 500
 	 * @param {Error} error
 	 */
-	protected error(message, statusCode = 500, error = undefined)
+	protected error(message, statusCode = 500, error = undefined): ErrorResult
 	{
 		return new ErrorResult(message, statusCode, error);
 	}
@@ -351,6 +352,8 @@ export class Controller
 	 */
 	protected fileDownload(filePath, newName, contentType)
 	{
+		this.exited = true; // this.exit() not called cuz it ends reponse; it cannot be called in the end of this method because it's async and Application needs to know this in sync time
+
 		// Require fs if it hasn't been required yet
 		if (!$fs)
 		{
@@ -388,7 +391,6 @@ export class Controller
 			this.response.response.writeHead(200, this.response.headers);
 
 			$fs.createReadStream(filePath).pipe(this.response.response);
-			this.exit();
 		});
 	}
 

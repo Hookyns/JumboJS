@@ -7,8 +7,6 @@ if (Jumbo.config.jumboDebugMode) {
 	console.log("[DEBUG] REQUIRE: DIContainer");
 }
 
-import * as uuid from "uuid/v1";
-
 const LifetimeScope = {
 	SingleInstance: "singleinstance",
 	ScopeInstance: "scopeinstance",
@@ -33,6 +31,12 @@ export class DIContainer
 	 * List of registered types
 	 */
 	private registeredTypes: {[key: string]: IRegisteredTypeInfo} = {};
+
+	/**
+	 * List of types with their injectable properties
+	 * @type {{}}
+	 */
+	private propertyInjectionTypes: {[key: string/*Symbol*/]: {[property: string/* | Symbol*/]: string}} = {};
 
 	//endregion
 
@@ -102,7 +106,8 @@ export class DIContainer
 			isExpr: !expr.prototype/* && expr.toString().slice(0, 5) != "class"*/, // only lambda can be expression
 			params: null, // Will be filled after first resolve,
 			scope: scope,
-			instance: null // Will be filled after first resolve if scope is SingleInstance
+			instance: null, // Will be filled after first resolve if scope is SingleInstance
+			injectablePropertie: null // Will be filled after first resolve
 		};
 	}
 
@@ -123,7 +128,7 @@ export class DIContainer
 		}
 
 		// If type's args were already resolved and its length is 0
-		if (regType.params && regType.params.length == 0)
+		if (/*regType.params && */regType.params.length === 0)
 		{
 			return [];
 		}
@@ -154,6 +159,22 @@ export class DIContainer
 		}
 
 		return args;
+	}
+
+	/**
+	 * Resolve injectable properties
+	 * @param type
+	 * @param regType
+	 * @param instance
+	 */
+	private resolveInjectableProperties(type: Function, regType: IRegisteredTypeInfo, instance: any): void {
+
+		// TODO: Implement
+		/*
+			let injectablePropertie = regType.injectablePropertie;
+			if (null) lookup from propertyInjectionTypes
+			foreach injectablePropertie instance[property] = this.resolve();
+		 */
 	}
 
 	/**
@@ -218,6 +239,11 @@ export class DIContainer
 				_scope.instances[name] = instance;
 			}
 
+			// Lookup injectable properties
+			if (regType.injectablePropertie !== false) {
+				this.resolveInjectableProperties(type, regType, instance);
+			}
+
 			return instance;
 		}
 		catch (e)
@@ -238,10 +264,10 @@ export class DIContainer
 	{
 		let name = (<any>type).__diContainerUid;
 
-		// Generate UUID and save it to secret field on type
+		// Generate Symbol and save it to secret field on type
 		if (!name)
 		{
-			name = (<any>type).__diContainerUid = uuid();
+			name = (<any>type).__diContainerUid = Symbol(type.name || undefined);
 
 			// Register if not registered
 			if (!this.registeredTypes[name])
@@ -251,6 +277,25 @@ export class DIContainer
 		}
 
 		return this.resolve(name, _scope);
+	}
+
+	/**
+	 * Register injectable property
+	 * @param {Function} target Class on which is injectable property
+	 * @param {string | Symbol} property Property which should be injected
+	 * @param {string} serviceName Name of Service whih should be injected into given property
+	 */
+	registerPropertyInjection(target: Function, property: string | Symbol, serviceName: string)
+	{
+		let symbol = (<any>target).__diContainerInjectablePropertyUid;
+
+		if (!symbol)
+		{
+			symbol = (<any>target).__diContainerInjectablePropertyUid = Symbol(target.name || undefined);
+		}
+
+		let info = this.propertyInjectionTypes[symbol] || (this.propertyInjectionTypes[symbol] = {});
+		info[<string>property] = serviceName;
 	}
 
 	//endregion
@@ -267,6 +312,15 @@ class DIContainerActivator extends DIContainer
 import {Scope} from "./Scope";
 import {ControllerFactory} from "jumbo-core/Application/ControllerFactory";
 import {Log} from "../logging/Log";
+
+/**
+ * INJECT decorator for property injection; Not fully implemented
+ */
+(<any>global).inject = function(serviceName: string) {
+	return function(target: Object, property: string | Symbol) {
+		DIContainer.instance.registerPropertyInjection(<Function>target, property, serviceName);
+	}
+};
 
 if (Jumbo.config.jumboDebugMode)
 {
