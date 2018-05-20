@@ -57,7 +57,7 @@ and you'll have base project (default from jumbo-developer template which you ca
 
 Go to your project directory and run application.
 ```
-node app.js
+npm start
 ```
 Application will run on port 80 by default. You can change it in app.js.
 

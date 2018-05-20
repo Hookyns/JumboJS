@@ -22,7 +22,7 @@ const ApplicationConfig = {
 	/**
 	 * For framework debuging - extra logs
 	 */
-	jumboDebugMode: true,
+	jumboDebugMode: false,
 
 	/**
 	 * Protocol setting
