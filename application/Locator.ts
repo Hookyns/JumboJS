@@ -40,6 +40,8 @@ const Method = {
 //region Consts
 
 const GLOBALIZATION_ENABLED = Jumbo.config.globalization.enabled;
+const GLOBALIZATION_DEFAULT = Jumbo.config.globalization.default || "es-US";
+const GLOBALIZATION_SUPPORTED: string[] = Jumbo.config.globalization.supportedLocales || ["en-US"];
 export const DEFAULT_CONTROLLER = "Home";
 export const DEFAULT_ACTION = "index";
 // let CONTROLLER_WITHOUT_ACTION_REGEX = /^([a-z]{2})?[\/][a-z]{3,}/;
@@ -385,73 +387,6 @@ export class Locator
 		}
 	}
 
-	// /**
-	//  * Generate full URL with protocol and host. Host must be set by setHost().
-	//  * @param {string} controller
-	//  * @param {string} action
-	//  * @param {Array} [slashParams]
-	//  * @param {Object} [queryParams]
-	//  * @param {string} [subApp]
-	//  * @param {string} [lang]
-	//  * @param {string} [protocol]
-	//  * @param {string} [host]
-	//  * @returns {string}
-	//  */
-	// generateUrl(controller: ControllerNameString, action: ActionNameString, slashParams: object[] = [],
-	// 	queryParams: object = {}, subApp: string = null, lang: string = null, protocol: string = null,
-	// 	host: string = null)
-	// {
-	// 	controllerFactory.getTargetPoint(subApp, controller, action);
-	//
-	// 	let baseUrl = "/";
-	//
-	// 	if (host || protocol || subApp)
-	// 	{
-	// 		baseUrl = (protocol || "http") + "://" + (!!subApp ? (subApp + ".") : "") + (host || this.host) + "/";
-	// 	}
-	//
-	// 	if (lang && GLOBALIZATION_ENABLED)
-	// 	{
-	// 		baseUrl += lang + this.delimiter;
-	// 	}
-	//
-	// 	let queryParamsLength = Object.keys(queryParams).length;
-	// 	let noParams = slashParams.length == 0 && queryParamsLength == 0;
-	//
-	// 	// Base controller and action - return base URL
-	// 	if (controller == DEFAULT_CONTROLLER
-	// 		&& action == DEFAULT_ACTION && noParams)
-	// 	{
-	// 		return baseUrl;
-	// 	}
-	// 	// Default action - return base URL just with controller
-	// 	else if (action == DEFAULT_ACTION && noParams)
-	// 	{
-	// 		return baseUrl + controller;//.toLowerCase();
-	// 	}
-	// 	else
-	// 	{
-	// 		let url = baseUrl + controller/*.toLowerCase()*/ + this.delimiter + action/*.toLowerCase()*/;
-	//
-	// 		if (!noParams)
-	// 		{
-	// 			if (slashParams.length === 0) url += this.delimiter;
-	//
-	// 			for (let i = 0; i < slashParams.length; i++)
-	// 			{
-	// 				url += this.delimiter + slashParams[i];
-	// 			}
-	//
-	// 			if (queryParamsLength != 0)
-	// 			{
-	// 				url += "&" + $qs.stringify(queryParams);
-	// 			}
-	// 		}
-	//
-	// 		return url;
-	// 	}
-	// }
-
 	/**
 	 * Create URL from specified Location
 	 * @param {string} locationName
@@ -544,10 +479,32 @@ export class Locator
 
 	requestLocaleOrDefault(request: $http.IncomingMessage): string
 	{
-		return (
-			(<string>request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX)
-			|| ["en-US"]
-		)[0];
+		let match = (<string>request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX);
+
+		if (match)
+		{
+			if (GLOBALIZATION_SUPPORTED.includes(match[0]))
+			{
+				return match[0];
+			}
+
+			let subMatch = match[0].slice(0, 2);
+
+			for (let loc of GLOBALIZATION_SUPPORTED)
+			{
+				if (loc.slice(0, 2) === subMatch)
+				{
+					return loc;
+				}
+			}
+		}
+
+		return GLOBALIZATION_DEFAULT;
+
+		// return (
+		//     match
+		//     || Jumbo.config.globalization.default
+		// )[0];
 	}
 
 	/**
@@ -561,7 +518,7 @@ export class Locator
 		let parse = $url.parse(url);
 		url = parse.pathname.slice(1); // Slice, remove first slash
 
-		if (parse.pathname == "/") // empty, only slash
+		if (parse.pathname === "/" && GLOBALIZATION_ENABLED) // empty, only slash
 		{
 			let lang = this.requestLocaleOrDefault(request);
 
@@ -688,7 +645,17 @@ export class Locator
 	 */
 	private emptyLocationMatch(parse: any, subApp: string, request: $http.IncomingMessage): ILocatorMatch
 	{
-		let localeMatch = parse.pathname.slice(1).match(ONLY_LOCALE_REGEX);
+		let localeMatch;
+
+		if (GLOBALIZATION_ENABLED)
+		{
+			localeMatch = parse.pathname.slice(1).match(ONLY_LOCALE_REGEX);
+			if (localeMatch) localeMatch = localeMatch[0];
+		}
+		else if (parse.pathname === "/")
+		{
+			localeMatch = this.requestLocaleOrDefault(request);
+		}
 
 		// If just locale
 		if (localeMatch)
@@ -699,7 +666,7 @@ export class Locator
 				controller: DEFAULT_CONTROLLER,
 				action: DEFAULT_ACTION,
 				params: $qs.parse(parse.query),
-				locale: localeMatch[0],
+				locale: localeMatch,
 				actionInUrl: false,
 				controllerInUrl: false
 			};

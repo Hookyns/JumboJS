@@ -190,7 +190,17 @@ const ApplicationConfig = {
 		 * @type {boolean}
 		 * @default false
 		 */
-		enabled: false
+		enabled: false,
+
+		/**
+		 * Supported languages
+		 */
+		supportedLocales: ["en-US"],
+
+		/**
+		 * Default language
+		 */
+		default: "en-US"
 	},
 
 	/**

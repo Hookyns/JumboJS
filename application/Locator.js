@@ -19,6 +19,8 @@ const Method = {
     DELETE: "DELETE"
 };
 const GLOBALIZATION_ENABLED = Jumbo.config.globalization.enabled;
+const GLOBALIZATION_DEFAULT = Jumbo.config.globalization.default || "es-US";
+const GLOBALIZATION_SUPPORTED = Jumbo.config.globalization.supportedLocales || ["en-US"];
 exports.DEFAULT_CONTROLLER = "Home";
 exports.DEFAULT_ACTION = "index";
 exports.END_DELIMITER_TRIM_REGEX = /[\/]+$/;
@@ -205,14 +207,25 @@ class Locator {
         return baseUrl + url;
     }
     requestLocaleOrDefault(request) {
-        return ((request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX)
-            || ["en-US"])[0];
+        let match = (request.headers["accept-language"] || "").match(LOCALE_OPT_COUNTRY_REGEX);
+        if (match) {
+            if (GLOBALIZATION_SUPPORTED.includes(match[0])) {
+                return match[0];
+            }
+            let subMatch = match[0].slice(0, 2);
+            for (let loc of GLOBALIZATION_SUPPORTED) {
+                if (loc.slice(0, 2) === subMatch) {
+                    return loc;
+                }
+            }
+        }
+        return GLOBALIZATION_DEFAULT;
     }
     parseUrl(request) {
         let url = request.url.replace(DELIMITER_REGEX, "/");
         let parse = $url.parse(url);
         url = parse.pathname.slice(1);
-        if (parse.pathname == "/") {
+        if (parse.pathname === "/" && GLOBALIZATION_ENABLED) {
             let lang = this.requestLocaleOrDefault(request);
             return new RequestException_1.RequestException("No locale specified", 301, false, "/" + lang + (parse.query || ""));
         }
@@ -263,7 +276,15 @@ class Locator {
         return this.urlAliases[alias];
     }
     emptyLocationMatch(parse, subApp, request) {
-        let localeMatch = parse.pathname.slice(1).match(ONLY_LOCALE_REGEX);
+        let localeMatch;
+        if (GLOBALIZATION_ENABLED) {
+            localeMatch = parse.pathname.slice(1).match(ONLY_LOCALE_REGEX);
+            if (localeMatch)
+                localeMatch = localeMatch[0];
+        }
+        else if (parse.pathname === "/") {
+            localeMatch = this.requestLocaleOrDefault(request);
+        }
         if (localeMatch) {
             return {
                 location: this.locations.get(DEFAULT_LOCATION_NAME),
@@ -271,7 +292,7 @@ class Locator {
                 controller: exports.DEFAULT_CONTROLLER,
                 action: exports.DEFAULT_ACTION,
                 params: $qs.parse(parse.query),
-                locale: localeMatch[0],
+                locale: localeMatch,
                 actionInUrl: false,
                 controllerInUrl: false
             };
