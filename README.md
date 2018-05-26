@@ -55,7 +55,7 @@ create project
 ```
 and you'll have base project (default from jumbo-developer template which you can change) in directory you specified earlier.
 
-Go to your project directory and run application.
+Go to your project directory, edit your config.js file (set up DB connection or remove whole `domains` property) and run application.
 ```
 npm start
 ```
