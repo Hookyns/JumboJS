@@ -20,6 +20,7 @@ import * as $formidable from "formidable";
 import * as $https from "https";
 import * as $http from "http";
 import * as uuid from "uuid/v1";
+import * as Tokens from "csrf";
 
 import {Exception} from "jumbo-core/exceptions/Exception";
 import {ViewResult} from "jumbo-core/results/ViewResult";
@@ -40,11 +41,18 @@ const JUMBO_DEBUG_MODE = Jumbo.config.jumboDebugMode; // Does application run in
 const LOG_ENABLED = Jumbo.config.log.enabled === true; // Is logging enabled?
 const DEVELOPMENT_MODE = Jumbo.config.deployment == $cfg.Deployment.Development; // Does application run in debug mode?
 const CHECK_INTERVAL_TIME = 5;// Number of seconds, time for collecting data, after that time are limits (amplified by
-                              // this number) checked
+							  // this number) checked
 const TPL_CACHE_EXTENSION = ".tplcache"; // Extension for template cache files
 const BEFORE_ACTION_NAME = "beforeActions";
 let CAN_USE_CACHE = false;
 const MAX_POST_DATA_SIZE = Jumbo.config.maxPostDataSize;
+const X_POWERED_BY_ENABLED = !Jumbo.config.security.hidePoweredBy;
+const X_FRAME_OPTION = Jumbo.config.security.xFrameOptions;
+const NO_SNIFF = !!Jumbo.config.security.noSniff;
+export const CSRF_KEY_NAME = "__forgery_token";
+const ONE_DAY_TIME = 24 * 60 * 60;
+const CSRF_REQUIRING_METHODS = ["POST", "PUT", "DELETE"];
+const CSRF_ENABLED = !!Jumbo.config.security.csrf;
 
 //endregion
 
@@ -165,6 +173,11 @@ export class Application
 	private templateAdapter: ITemplateAdapter = null;
 
 	/**
+	 * CSRF Token generator instance
+	 */
+	private csrf = new Tokens();
+
+	/**
 	 * Will be true after setting up http server
 	 */
 	public serverIsRunning: boolean = false;
@@ -199,11 +212,11 @@ export class Application
 	 * @param {function} handler
 	 */
 	public setStaticFileResolver(handler: (fileName: string,
-		callback: (error: Error,
-			readStream: $fs.ReadStream,
-			mime: string,
-			size: number,
-			headers?: { [key: string]: any }) => void) => void)
+										   callback: (error: Error,
+													  readStream: $fs.ReadStream,
+													  mime: string,
+													  size: number,
+													  headers?: { [key: string]: any }) => void) => void)
 	{
 		this.staticFileResolver = handler;
 	}
@@ -592,8 +605,7 @@ export class Application
 		// request start time
 		let requestBeginTime = new Date().getTime();
 
-		// X-Poweder-By
-		response.setHeader("X-Powered-By", "JumboJS");
+		this.setResponseHeaders(response);
 
 		// client IP from header
 		let clientIP = this.getClientIP(request);
@@ -629,6 +641,18 @@ export class Application
 			// Just for case of some unexpected but catchable error
 			await this.displayError(request, response, ex);
 		}
+	}
+
+	/**
+	 * Set headers by config
+	 * @param {"http".ServerResponse} response
+	 */
+	private setResponseHeaders(response: $http.ServerResponse)
+	{
+		// X-Poweder-By
+		if (X_POWERED_BY_ENABLED) response.setHeader("X-Powered-By", "JumboJS");
+		if (X_FRAME_OPTION) response.setHeader("X-Frame-Options", X_FRAME_OPTION);
+		if (NO_SNIFF) response.setHeader("X-Content-Type-Options", "nosniff");
 	}
 
 	/**
@@ -790,6 +814,62 @@ export class Application
 	}
 
 	/**
+	 * Verify CSRF token
+	 * @param {Request} jRequest
+	 * @param {Response} jResponse
+	 * @param {{}} session
+	 * @returns {Promise<boolean>}
+	 */
+	private async verifyCsrfToken(jRequest: Request, jResponse: Response, session: {[key: string] : any})
+	{
+		let secret = await this.getCsrfSecret(session);
+
+		if (CSRF_REQUIRING_METHODS.includes(jRequest.method)) {
+			// let token = this.csrf.create(secret);
+
+			// server secrete, request token
+			if (!this.csrf.verify(secret, jRequest.body.fields[CSRF_KEY_NAME])) {
+				this.plainResponse(jResponse.response,
+					"Error 403, forbidden. Invalid token detected. ", 403);
+				return false;
+			}
+		}
+
+		return true; // OK
+	}
+
+	// noinspection JSMethodCanBeStatic
+	/**
+	 * Return current CSRF secret for given session
+	 * @param session
+	 * @returns {string}
+	 */
+	public getCsrfSecret(session: {[key: string] : any}): string {
+		return session[CSRF_KEY_NAME];
+	}
+
+	// noinspection JSMethodCanBeStatic
+	/**
+	 * Generate new CSRF secret
+	 * @returns {Promise<string>}
+	 */
+	public async generateCsrfSecret(session: {[key: string] : any}): Promise<string> {
+		let secret = await this.csrf.secret();
+		session[CSRF_KEY_NAME] = secret;
+		return secret;
+	}
+
+	// noinspection JSMethodCanBeStatic
+	/**
+	 * Generate new CSRF token for given secret
+	 * @param {string} secret
+	 * @returns {string}
+	 */
+	public generateCsrfTokenFor(secret: string): string{
+		return this.csrf.create(secret);
+	}
+
+	/**
 	 * Process incoming request
 	 * @private
 	 * @param request
@@ -816,6 +896,19 @@ export class Application
 		this.setClientSession(jRequest, jResponse);
 		jRequest.body = await this.collectBodyData(jRequest, jResponse);
 
+		// Get stored session object
+		let session = await this.getClientSession(jRequest);
+
+		if (CSRF_ENABLED)
+		{
+			// Prepare CSRF - generate secret if not exists
+			await this.prepareCsrf(session);
+
+			// Verify CSRF if needed
+			let csrfValid = await this.verifyCsrfToken(jRequest, jResponse, session);
+			if (!csrfValid) return;
+		}
+
 		if (DEBUG_MODE)
 		{
 			console.log(`[DEBUG] Request target point Sub-App ${jRequest.subApp}, Controller ${jRequest.controllerFullName}, `
@@ -823,7 +916,7 @@ export class Application
 		}
 
 		// Create controller
-		let ctrl = await this.createController(jRequest, jResponse);
+		let ctrl = await this.createController(jRequest, jResponse, session);
 
 		// Call beforeActions
 		let actionResult = await this.callBeforeActions(ctrl, jRequest);
@@ -860,6 +953,19 @@ export class Application
 	}
 
 	/**
+	 * Prepare CSRF if enabled
+	 * @param {{[p: string]: any} | undefined} session
+	 * @returns {Promise<void>}
+	 */
+	private async prepareCsrf(session: { [p: string]: any } | undefined)
+	{
+		if (!this.getCsrfSecret(session))
+		{
+			await this.generateCsrfSecret(session);
+		}
+	}
+
+	/**
 	 * Process parseUrl error
 	 * @param {ILocatorMatch} match
 	 * @param {"http".IncomingMessage} request
@@ -867,7 +973,7 @@ export class Application
 	 * @param {Response} jResponse
 	 */
 	private async procUrlParseError(match: ILocatorMatch, request: $http.IncomingMessage,
-		response: $http.ServerResponse, jResponse: Response): Promise<void>
+									response: $http.ServerResponse, jResponse: Response): Promise<void>
 	{
 		if (match == null || !(<RequestException><any>match).redirectTo)
 		{
@@ -1051,9 +1157,10 @@ export class Application
 	 * Create controller and init it
 	 * @param {Request} request
 	 * @param {Response} response
+	 * @param {{}} session
 	 * @returns {Promise<Controller>}
 	 */
-	private async createController(request: Request, response: Response): Promise<Controller>
+	private async createController(request: Request, response: Response, session: {[key: string] : any}): Promise<Controller>
 	{
 		// new scope for controller
 		let scope = new Jumbo.Ioc.Scope();
@@ -1065,7 +1172,6 @@ export class Application
 			scope
 		);
 
-		let session = await this.getClientSession(request);
 		this.initController(ctrl, request, response, session, scope);
 
 		return ctrl;
@@ -1426,7 +1532,7 @@ export class Application
 	 * @param {string} tplCacheFileName
 	 */
 	private async compileAndRenderView(viewResult: ViewResult, req: Request, res: Response,
-		cntrl: Controller, writeToCache: boolean, tplCacheFileName: string)
+									   cntrl: Controller, writeToCache: boolean, tplCacheFileName: string)
 	{
 		if (JUMBO_DEBUG_MODE)
 		{
@@ -1694,7 +1800,7 @@ export class Application
 	 * @param {"http".ServerResponse} response
 	 */
 	private renderException(message: string, ex: Error | Exception, status: number, request: $http.IncomingMessage,
-		response: $http.ServerResponse)
+							response: $http.ServerResponse)
 	{
 		let result = require("jumbo-core/exception-template.js")(message, ex, status, request);
 		response.writeHead(status, {

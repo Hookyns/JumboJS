@@ -230,7 +230,12 @@ const ApplicationConfig = {
 		 * @type {boolean}
 		 * @default false
 		 */
-		noSniff: false
+		noSniff: false,
+
+		/**
+		 * Enable CSRF validation
+		 */
+		csrf: true
 	}
 
 	// You can define your own settings here,.. it'll be available via global Jumbo.Config

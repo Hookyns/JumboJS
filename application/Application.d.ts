@@ -1,5 +1,6 @@
 import * as $fs from "fs";
 import * as $http from "http";
+export declare const CSRF_KEY_NAME = "__forgery_token";
 export declare class Application {
     private server;
     private serverIsReady;
@@ -16,6 +17,7 @@ export declare class Application {
     private blockIpListener;
     private staticFileResolver;
     private templateAdapter;
+    private csrf;
     serverIsRunning: boolean;
     getLocator(): Locator;
     getDIContainer(): DIContainer;
@@ -39,18 +41,28 @@ export declare class Application {
     private prepareRequestsSetting();
     private prepareHttpsServerOptions();
     private serverCallback(request, response);
+    private setResponseHeaders(response);
     private checkStaticFileRequest(request, response);
     private checkEndingDelimiter(request, response);
     private checkIPRequestsLimit(clientIP, response);
     private checkRequestsLimit(response, clientIP);
+    private verifyCsrfToken(jRequest, jResponse, session);
+    getCsrfSecret(session: {
+        [key: string]: any;
+    }): string;
+    generateCsrfSecret(session: {
+        [key: string]: any;
+    }): Promise<string>;
+    generateCsrfTokenFor(secret: string): string;
     private processRequest(request, response, requestBeginTime);
+    private prepareCsrf(session);
     private procUrlParseError(match, request, response, jResponse);
     private setClientSession(jRequest, jResponse);
     private getClientSession(jRequest);
     private buildRequest(request, requestBeginTime, match);
     private checkLongFormatUrl(req, match);
     private collectBodyData(req, res);
-    private createController(request, response);
+    private createController(request, response, session);
     private initController(cntrll, req, res, session, scope);
     private callBeforeActions(ctrl, request);
     private callAction(controller, request);

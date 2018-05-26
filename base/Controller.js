@@ -28,6 +28,9 @@ class Controller {
     get url() {
         return new Jumbo.Utils.Url(this.request);
     }
+    get csrfToken() {
+        return Application_1.Application.instance.generateCsrfTokenFor(Application_1.Application.instance.getCsrfSecret(this.session));
+    }
     _initController(request, response, session, scope) {
         this.session = session;
         this.request = request;
@@ -46,6 +49,9 @@ class Controller {
             return new ViewResult_1.ViewResult(viewOrData, data || {});
         }
         return new ViewResult_1.ViewResult(null, viewOrData || {});
+    }
+    async regenerateCsrfSecret() {
+        await Application_1.Application.instance.generateCsrfSecret(this.session);
     }
     exit() {
         this.exited = true;
@@ -147,6 +153,7 @@ class Controller {
 Controller.clientMessagesId = "_clientMessages";
 exports.Controller = Controller;
 const ViewResult_1 = require("jumbo-core/results/ViewResult");
+const Application_1 = require("../application/Application");
 if (Jumbo.config.jumboDebugMode) {
     console.log("[DEBUG] REQUIRE: Controller END");
 }

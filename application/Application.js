@@ -12,6 +12,7 @@ const $formidable = require("formidable");
 const $https = require("https");
 const $http = require("http");
 const uuid = require("uuid/v1");
+const Tokens = require("csrf");
 const Exception_1 = require("jumbo-core/exceptions/Exception");
 const ViewResult_1 = require("jumbo-core/results/ViewResult");
 const Cluster_1 = require("jumbo-core/cluster/Cluster");
@@ -29,6 +30,13 @@ const TPL_CACHE_EXTENSION = ".tplcache";
 const BEFORE_ACTION_NAME = "beforeActions";
 let CAN_USE_CACHE = false;
 const MAX_POST_DATA_SIZE = Jumbo.config.maxPostDataSize;
+const X_POWERED_BY_ENABLED = !Jumbo.config.security.hidePoweredBy;
+const X_FRAME_OPTION = Jumbo.config.security.xFrameOptions;
+const NO_SNIFF = !!Jumbo.config.security.noSniff;
+exports.CSRF_KEY_NAME = "__forgery_token";
+const ONE_DAY_TIME = 24 * 60 * 60;
+const CSRF_REQUIRING_METHODS = ["POST", "PUT", "DELETE"];
+const CSRF_ENABLED = !!Jumbo.config.security.csrf;
 const istanceKey = Symbol.for("Jumbo.Application.Application");
 let instance = global[istanceKey] || null;
 class Application {
@@ -56,6 +64,7 @@ class Application {
         this.blockIpListener = null;
         this.staticFileResolver = staticFileResolver_1.staticFileResolver;
         this.templateAdapter = null;
+        this.csrf = new Tokens();
         this.serverIsRunning = false;
         if (new.target != ApplicationActivator) {
             throw new Error("You cannot call private constructor!");
@@ -233,7 +242,7 @@ class Application {
     }
     async serverCallback(request, response) {
         let requestBeginTime = new Date().getTime();
-        response.setHeader("X-Powered-By", "JumboJS");
+        this.setResponseHeaders(response);
         let clientIP = this.getClientIP(request);
         try {
             let canContinue = this.checkRequestsLimit(response, clientIP);
@@ -257,6 +266,14 @@ class Application {
         catch (ex) {
             await this.displayError(request, response, ex);
         }
+    }
+    setResponseHeaders(response) {
+        if (X_POWERED_BY_ENABLED)
+            response.setHeader("X-Powered-By", "JumboJS");
+        if (X_FRAME_OPTION)
+            response.setHeader("X-Frame-Options", X_FRAME_OPTION);
+        if (NO_SNIFF)
+            response.setHeader("X-Content-Type-Options", "nosniff");
     }
     async checkStaticFileRequest(request, response) {
         if (request.method == "GET" && request.url.slice(0, 7) === "/public") {
@@ -346,6 +363,27 @@ class Application {
         }
         return true;
     }
+    async verifyCsrfToken(jRequest, jResponse, session) {
+        let secret = await this.getCsrfSecret(session);
+        if (CSRF_REQUIRING_METHODS.includes(jRequest.method)) {
+            if (!this.csrf.verify(secret, jRequest.body.fields[exports.CSRF_KEY_NAME])) {
+                this.plainResponse(jResponse.response, "Error 403, forbidden. Invalid token detected. ", 403);
+                return false;
+            }
+        }
+        return true;
+    }
+    getCsrfSecret(session) {
+        return session[exports.CSRF_KEY_NAME];
+    }
+    async generateCsrfSecret(session) {
+        let secret = await this.csrf.secret();
+        session[exports.CSRF_KEY_NAME] = secret;
+        return secret;
+    }
+    generateCsrfTokenFor(secret) {
+        return this.csrf.create(secret);
+    }
     async processRequest(request, response, requestBeginTime) {
         const jResponse = new Response_1.Response(response);
         let match = this.locator.parseUrl(request);
@@ -358,11 +396,18 @@ class Application {
             return jResponse.redirectUrl(redirectTo);
         this.setClientSession(jRequest, jResponse);
         jRequest.body = await this.collectBodyData(jRequest, jResponse);
+        let session = await this.getClientSession(jRequest);
+        if (CSRF_ENABLED) {
+            await this.prepareCsrf(session);
+            let csrfValid = await this.verifyCsrfToken(jRequest, jResponse, session);
+            if (!csrfValid)
+                return;
+        }
         if (DEBUG_MODE) {
             console.log(`[DEBUG] Request target point Sub-App ${jRequest.subApp}, Controller ${jRequest.controllerFullName}, `
                 + `Action ${jRequest.actionFullName}, Method ${jRequest.method}`);
         }
-        let ctrl = await this.createController(jRequest, jResponse);
+        let ctrl = await this.createController(jRequest, jResponse, session);
         let actionResult = await this.callBeforeActions(ctrl, jRequest);
         if (actionResult !== undefined)
             await this.afterAction(ctrl, actionResult);
@@ -384,6 +429,11 @@ class Application {
         }
         throw new Error(`Action '${jRequest.actionFullName}'`
             + ` in controller '${jRequest.controllerFullName}' wasn't exited.`);
+    }
+    async prepareCsrf(session) {
+        if (!this.getCsrfSecret(session)) {
+            await this.generateCsrfSecret(session);
+        }
     }
     async procUrlParseError(match, request, response, jResponse) {
         if (match == null || !match.redirectTo) {
@@ -484,10 +534,9 @@ class Application {
             });
         });
     }
-    async createController(request, response) {
+    async createController(request, response, session) {
         let scope = new Jumbo.Ioc.Scope();
         let ctrl = this.controllerFactory.createController(this.controllerFactory.getControllerId(request.controller), this.controllerFactory.getSubAppId(request.subApp), scope);
-        let session = await this.getClientSession(request);
         this.initController(ctrl, request, response, session, scope);
         return ctrl;
     }

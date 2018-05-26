@@ -5,7 +5,8 @@
 
 import {ErrorResult} from "../results/ErrorResult";
 
-if (Jumbo.config.jumboDebugMode) {
+if (Jumbo.config.jumboDebugMode)
+{
 	console.log("[DEBUG] REQUIRE: Controller");
 }
 
@@ -23,7 +24,7 @@ const XJUMBO_REQUEST_ACTION_MAP = { // Object mapping x-jumbo-request types to c
 	},
 };
 const X_JUMBO_VIEW_TYPE_HEADER_PROP_NAME = "x-required-content-type"; // Name of HTTP header property which should tells
-                                                                     // which view type is required
+// which view type is required
 
 /**
  * Core controller of framework
@@ -89,6 +90,17 @@ export class Controller
 		return new Jumbo.Utils.Url(this.request);
 	}
 
+	/**
+	 * Get CSRF token for FORM
+	 * @returns {string}
+	 */
+	public get csrfToken(): string
+	{
+		return Application.instance.generateCsrfTokenFor(
+			Application.instance.getCsrfSecret(this.session)
+		);
+	}
+
 	//endregion
 
 	// //region Ctors
@@ -117,32 +129,33 @@ export class Controller
 		this.response = response;
 		this.scope = scope;
 
-		this.crossRequestData = {};/*new Proxy({}, {
-			get: function (obj, key) {
-				if (!crossRequestDataStorage.hasOwnProperty(request.sessionId))
-				{
-					return undefined;
-				}
+		this.crossRequestData = {};
+		/*new Proxy({}, {
+					get: function (obj, key) {
+						if (!crossRequestDataStorage.hasOwnProperty(request.sessionId))
+						{
+							return undefined;
+						}
 
-				return crossRequestDataStorage[request.sessionId][key];
-			},
-			set: function (obj, key, value) {
-				if (!crossRequestDataStorage.hasOwnProperty(request.sessionId))
-				{
-					crossRequestDataStorage[request.sessionId] = {};
-				}
+						return crossRequestDataStorage[request.sessionId][key];
+					},
+					set: function (obj, key, value) {
+						if (!crossRequestDataStorage.hasOwnProperty(request.sessionId))
+						{
+							crossRequestDataStorage[request.sessionId] = {};
+						}
 
-				return crossRequestDataStorage[request.sessionId][key] = value;
-			},
-			getOwnPropertyDescriptor: function (obj, key) {
-				if (!crossRequestDataStorage.hasOwnProperty(request.sessionId))
-				{
-					return undefined;
-				}
+						return crossRequestDataStorage[request.sessionId][key] = value;
+					},
+					getOwnPropertyDescriptor: function (obj, key) {
+						if (!crossRequestDataStorage.hasOwnProperty(request.sessionId))
+						{
+							return undefined;
+						}
 
-				return Object.getOwnPropertyDescriptor(crossRequestDataStorage[request.sessionId], key);
-			}
-		});*/
+						return Object.getOwnPropertyDescriptor(crossRequestDataStorage[request.sessionId], key);
+					}
+				});*/
 	}
 
 	// noinspection JSUnusedLocalSymbols
@@ -180,6 +193,14 @@ export class Controller
 	//endregion
 
 	//region Public methods
+
+	/**
+	 * Generate new CSRF token. Do it at least after login!
+	 */
+	async regenerateCsrfSecret()
+	{
+		await Application.instance.generateCsrfSecret(this.session);
+	}
 
 	/**
 	 * Completly ends basic workflow. Call it if you processed request/response on your own.
@@ -398,7 +419,8 @@ export class Controller
 	 * Redirect client to given URL
 	 * @param {Url} url
 	 */
-	protected redirect(url: Url) {
+	protected redirect(url: Url)
+	{
 		this.response.redirectUrl(url.getUrl());
 		this.exit();
 	}
@@ -413,6 +435,7 @@ import {Request} from "jumbo-core/application/Request";
 import {Response} from "jumbo-core/application/Response";
 import {Scope} from "jumbo-core/ioc/Scope";
 import {ViewResult} from "jumbo-core/results/ViewResult";
+import {Application, CSRF_KEY_NAME} from "../application/Application";
 
 if (Jumbo.config.jumboDebugMode)
 {

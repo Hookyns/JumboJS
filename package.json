@@ -37,6 +37,7 @@
 	"main": "loader.js",
 	"types": "loader.d.ts",
 	"dependencies": {
+		"csrf": "^3.0.6",
 		"formidable": "^1.2.1",
 		"uuid": "^3.2.1"
 	},

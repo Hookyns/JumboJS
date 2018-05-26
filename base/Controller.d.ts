@@ -10,11 +10,13 @@ export declare class Controller {
     crossRequestData: any;
     static clientMessagesId: string;
     protected readonly url: Url;
+    readonly csrfToken: string;
     _initController(request: Request, response: Response, session: {
         [key: string]: any;
     }, scope: Scope): void;
     _clearOldCrossRequestData(): void;
     protected static createBaseViewResult(viewOrData: string | {}, data: {}): ViewResult;
+    regenerateCsrfSecret(): Promise<void>;
     exit(): void;
     addMessage(message: string, messageType: any): void;
     protected renderView(viewOrData: any, data?: any): ViewResult;

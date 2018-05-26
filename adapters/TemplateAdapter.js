@@ -4,6 +4,7 @@
  */
 
 const {Jumplate} = require("jumbo-template");
+const {CSRF_KEY_NAME} = require("../application/Application");
 
 //region Template setup
 
@@ -65,9 +66,21 @@ Jumplate.registerHelper("applink", function (subApp, action, controller, params,
  * FORM helper
  */
 Jumplate.registerBlockHelper("form", function (content) {
-	return '<form method="POST" action="#" enctype="multipart/form-data">' + content + '</form>';
+	return '<form method="POST" action="#" enctype="multipart/form-data">'
+		+ `<input type="hidden" name="${CSRF_KEY_NAME}" value="${this.csrfToken}">${content}</form>`;
 });
 
+/**
+ * CSRF helper
+ * Create input with CSRF token
+ */
+Jumplate.registerHelper("csrf", function () {
+	return `<input type="hidden" name="${CSRF_KEY_NAME}" value="${this.csrfToken}">`;
+});
+
+/**
+ * JSON helper - convert object into JSON string
+ */
 Jumplate.registerHelper("json", function (obj) {
 	return JSON.stringify(obj);
 });

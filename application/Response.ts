@@ -61,7 +61,7 @@ export class Response
 	 * @param {String} [domain] Domain
 	 * @param {String} [path] Path
 	 */
-	setCookie(name: string, value: string, expire: number, domain: string, path: string)
+	setCookie(name: string, value: string, expire?: number, domain?: string, path?: string)
 	{
 		let cookies = this.headers["Set-Cookie"] || [];
 		let newCookie: string = name + "=" + value + ";";
